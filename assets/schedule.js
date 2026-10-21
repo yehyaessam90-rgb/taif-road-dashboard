@@ -687,6 +687,8 @@
 
   async function boot(skipLocal) {
     let s = null, src = '';
+    setStatus('Loading schedule…');
+    const sb = $('#schedBody'); if (sb && !S) sb.innerHTML = '<div class="card empty"><h3>Loading P6 schedule…</h3><p class="muted">About 6 MB — a few seconds on the first visit.</p></div>';
     if (!skipLocal) { s = await idbGet('schedule'); if (s) src = 'local import'; }
     if (!s) {
       try { const r = await fetch('data/schedule.json', { cache: 'no-store' }); if (r.ok) { s = await r.json(); src = 'published data/schedule.json'; } } catch (e) { }

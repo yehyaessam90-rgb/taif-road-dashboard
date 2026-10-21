@@ -8,9 +8,16 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Cairo:wght@400;600;700&display=swap" rel="stylesheet">
 <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="assets/styles.css">
-<script src="assets/vendor/chart.umd.min.js"></script>
-<script src="assets/vendor/xlsx.full.min.js"></script>
+<link rel="stylesheet" href="assets/styles.css?v=202610211830">
+<script>
+  window.addEventListener('error', function (e) {
+    var b = document.getElementById('jsErr');
+    if (!b) { b = document.createElement('div'); b.id = 'jsErr'; b.style.cssText = 'position:fixed;left:16px;right:16px;bottom:16px;z-index:99;padding:12px 16px;border-radius:10px;background:#d23b3a;color:#fff;font:14px system-ui'; document.addEventListener('DOMContentLoaded', function () { document.body.appendChild(b); }); if (document.body) document.body.appendChild(b); }
+    b.innerHTML = '⚠ The page did not load completely (' + (e.message || 'script error') + '). Press <b>Ctrl + F5</b> to reload the latest version.';
+  });
+</script>
+<script src="assets/vendor/chart.umd.min.js?v=202610211830"></script>
+<script src="assets/vendor/xlsx.full.min.js?v=202610211830"></script>
 </head>
 <body>
 <header class="topbar">
@@ -256,9 +263,9 @@
 </footer>
 
 <div id="tooltipHost"></div>
-<script src="data/default-data.js"></script>
-<script src="assets/xer.js"></script>
-<script src="assets/app.js"></script>
-<script src="assets/schedule.js"></script>
+<script src="data/default-data.js?v=202610211830"></script>
+<script src="assets/xer.js?v=202610211830"></script>
+<script src="assets/app.js?v=202610211830"></script>
+<script src="assets/schedule.js?v=202610211830"></script>
 </body>
 </html>
