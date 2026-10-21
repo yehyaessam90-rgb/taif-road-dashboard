@@ -1,0 +1,703 @@
+/* P6 schedule module — baseline + weekly update XER → look-ahead, achieved, Gantt, cost/performance forecast.
+   Published copy: data/schedule.json (export it from the Import tab). Local imports live in IndexedDB. */
+(function () {
+  'use strict';
+  const A = window.APP;
+  const $ = s => document.querySelector(s);
+  const $$ = s => [...document.querySelectorAll(s)];
+  const DAY = 864e5;
+  const esc = A.esc, fmt = A.fmt, fmtM = A.fmtM, fmtP = A.fmtP;
+  const charts = {};
+
+  // ---------------- dates ----------------
+  const pd = s => { if (!s) return null; const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s); return m ? Date.UTC(+m[1], +m[2] - 1, +m[3]) : null; };
+  const ds = t => t === null || t === undefined ? '' : new Date(t).toISOString().slice(0, 10);
+  const fd = t => t ? new Date(t).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: '2-digit', timeZone: 'UTC' }) : '—';
+  const mk = t => new Date(t).toISOString().slice(0, 7);
+  const monthStart = t => { const d = new Date(t); return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1); };
+  const addMonths = (t, n) => { const d = new Date(t); return Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + n, 1); };
+  const monthLabel = k => new Date(k + '-01T00:00:00Z').toLocaleDateString('en-GB', { month: 'short', year: '2-digit', timeZone: 'UTC' });
+
+  // ---------------- XER → schedule ----------------
+  const TABLES = new Set(['PROJECT', 'PROJWBS', 'TASK', 'TASKRSRC', 'TASKPRED', 'CALENDAR']);
+  function readFile(text, label) {
+    const t = XER.parseXer(text, TABLES);
+    const tasks = t.TASK || [];
+    if (!tasks.length) throw new Error(label + ': no TASK table found — is this an XER export?');
+    const cnt = {};
+    tasks.forEach(r => { cnt[r.proj_id] = (cnt[r.proj_id] || 0) + 1; });
+    const pid = Object.keys(cnt).sort((a, b) => cnt[b] - cnt[a])[0];
+    const proj = (t.PROJECT || []).find(p => p.proj_id === pid) || {};
+    const hpd = {};
+    (t.CALENDAR || []).forEach(c => { hpd[c.clndr_id] = parseFloat(c.day_hr_cnt) || 8; });
+    const cost = {};
+    (t.TASKRSRC || []).forEach(r => {
+      if (r.proj_id && r.proj_id !== pid) return;
+      const c = cost[r.task_id] || (cost[r.task_id] = { b: 0, a: 0, r: 0 });
+      c.b += parseFloat(r.target_cost) || 0;
+      c.a += (parseFloat(r.act_reg_cost) || 0) + (parseFloat(r.act_ot_cost) || 0);
+      c.r += parseFloat(r.remain_cost) || 0;
+    });
+    const wbs = (t.PROJWBS || []).filter(w => w.proj_id === pid).map(w => ({
+      id: w.wbs_id, parent: w.parent_wbs_id, short: w.wbs_short_name, name: w.wbs_name, root: w.proj_node_flag === 'Y', seq: parseFloat(w.seq_num) || 0
+    }));
+    const acts = [];
+    for (const r of tasks) {
+      if (r.proj_id !== pid || r.task_type === 'TT_WBS') continue;
+      const h = hpd[r.clndr_id] || 8;
+      const durH = parseFloat(r.target_drtn_hr_cnt) || 0, remH = parseFloat(r.remain_drtn_hr_cnt) || 0;
+      let pct;
+      if (r.status_code === 'TK_Complete') pct = 100;
+      else if (r.status_code === 'TK_NotStart') pct = 0;
+      else if (r.complete_pct_type === 'CP_Phys' || !durH) pct = parseFloat(r.phys_complete_pct) || 0;
+      else pct = Math.max(0, Math.min(100, (durH - remH) / durH * 100));
+      const c = cost[r.task_id] || { b: 0, a: 0, r: 0 };
+      acts.push({
+        tid: r.task_id, code: r.task_code, name: r.task_name, wbs: r.wbs_id, type: r.task_type, status: r.status_code,
+        ts: pd(r.target_start_date), tf: pd(r.target_end_date), es: pd(r.early_start_date), ef: pd(r.early_end_date),
+        as: pd(r.act_start_date), af: pd(r.act_end_date), rs: pd(r.restart_date), re: pd(r.reend_date),
+        dur: durH / h, rem: remH / h, tfl: r.total_float_hr_cnt === '' || r.total_float_hr_cnt === undefined ? null : (parseFloat(r.total_float_hr_cnt) || 0) / h,
+        pct, drv: r.driving_path_flag === 'Y', cb: c.b, ca: c.a, cr: c.r
+      });
+    }
+    const byTid = {};
+    acts.forEach(a => { byTid[a.tid] = a.code; });
+    const rels = (t.TASKPRED || []).filter(r => byTid[r.task_id] && byTid[r.pred_task_id])
+      .map(r => [byTid[r.pred_task_id], byTid[r.task_id], (r.pred_type || '').replace('PR_', ''), Math.round((parseFloat(r.lag_hr_cnt) || 0) / 8)]);
+    return {
+      proj: {
+        name: proj.proj_short_name || '', dataDate: pd(proj.last_recalc_date) || pd(proj.next_data_date),
+        start: pd(proj.plan_start_date), finish: pd(proj.scd_end_date) || pd(proj.plan_end_date)
+      }, wbs, acts, rels
+    };
+  }
+
+  // merge baseline (B) + update (U) into the compact published model
+  function combine(B, U, files) {
+    const cur = U || B, base = B || U;
+    const bmap = {};
+    base.acts.forEach(a => { bmap[a.code] = a; });
+    // WBS paths
+    const W = {};
+    cur.wbs.forEach(w => { W[w.id] = w; });
+    const path = id => { const out = []; let w = W[id], g = 0; while (w && !w.root && g++ < 40) { out.unshift(w); w = W[w.parent]; } return out; };
+    const wbsOut = cur.wbs.filter(w => !w.root).map(w => {
+      const p = path(w.id);
+      return { id: w.id, parent: W[w.parent] && !W[w.parent].root ? w.parent : '', code: p.map(x => x.short).join('.'), name: w.name, depth: p.length - 1, seq: w.seq };
+    });
+    // order WBS depth-first by seq
+    const kids = {};
+    wbsOut.forEach(w => { (kids[w.parent] = kids[w.parent] || []).push(w); });
+    Object.values(kids).forEach(l => l.sort((a, b) => a.seq - b.seq || a.code.localeCompare(b.code)));
+    const ordered = [];
+    (function walk(p) { (kids[p] || []).forEach(w => { ordered.push(w); walk(w.id); }); })('');
+    const totalB = base.acts.reduce((s, a) => s + a.cb, 0);
+    const useCost = totalB > 0;
+    const acts = cur.acts.map(a => {
+      const b = bmap[a.code];
+      const isMs = a.type === 'TT_Mile' || a.type === 'TT_FinMile';
+      const bs = b ? (b.ts || b.es) : (a.ts || a.es), bf = b ? (b.tf || b.ef) : (a.tf || a.ef);
+      const s = a.as || a.es || a.ts, f = a.af || a.ef || a.tf;
+      const w = isMs || a.type === 'TT_LOE' ? 0 : useCost ? (b ? b.cb : a.cb) : (b ? b.dur : a.dur);
+      return {
+        c: a.code, n: a.name, w: a.wbs, t: a.type.replace('TT_', ''), st: a.status.replace('TK_', ''), bs, bf, s, f, as: a.as, af: a.af,
+        d: +a.dur.toFixed(1), rd: +a.rem.toFixed(1), p: +a.pct.toFixed(1), tf: a.tfl === null ? null : +a.tfl.toFixed(1), dr: a.drv ? 1 : 0,
+        wt: w, ac: a.ca, rc: a.cr, nb: b ? 0 : 1
+      };
+    });
+    return {
+      v: 1, created: new Date().toISOString(),
+      meta: {
+        baseline: B ? { file: files.b, name: B.proj.name, dataDate: B.proj.dataDate, start: B.proj.start, finish: B.proj.finish } : null,
+        update: U ? { file: files.u, name: U.proj.name, dataDate: U.proj.dataDate, start: U.proj.start, finish: U.proj.finish } : null,
+        weighting: useCost ? 'cost' : 'duration', bac: acts.reduce((s, a) => s + a.wt, 0)
+      },
+      wbs: ordered, acts, rels: cur.rels
+    };
+  }
+
+  // ---------------- state & storage ----------------
+  let S = null;          // schedule model
+  let X = null;          // derived indexes
+  const DB = 'trd_sched', STORE = 'kv';
+  const idb = () => new Promise((res, rej) => { const r = indexedDB.open(DB, 1); r.onupgradeneeded = () => r.result.createObjectStore(STORE); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
+  async function idbGet(k) { try { const d = await idb(); return await new Promise(r => { const q = d.transaction(STORE).objectStore(STORE).get(k); q.onsuccess = () => r(q.result); q.onerror = () => r(null); }); } catch (e) { return null; } }
+  async function idbSet(k, v) { try { const d = await idb(); await new Promise(r => { const tx = d.transaction(STORE, 'readwrite'); tx.objectStore(STORE).put(v, k); tx.oncomplete = r; tx.onerror = r; }); } catch (e) { } }
+  async function idbDel(k) { try { const d = await idb(); await new Promise(r => { const tx = d.transaction(STORE, 'readwrite'); tx.objectStore(STORE).delete(k); tx.oncomplete = r; tx.onerror = r; }); } catch (e) { } }
+  const pending = { b: null, u: null, fb: '', fu: '' };
+
+  function index() {
+    const W = {};
+    S.wbs.forEach(w => { W[w.id] = w; });
+    const A_ = {};
+    S.acts.forEach(a => { A_[a.c] = a; });
+    const pred = {}, succ = {};
+    (S.rels || []).forEach(r => { (succ[r[0]] = succ[r[0]] || []).push(r); (pred[r[1]] = pred[r[1]] || []).push(r); });
+    const dd = (S.meta.update || S.meta.baseline || {}).dataDate || Date.now();
+    const cv = (A.M.project.cv || 0) + (A.M.project.co || 0);
+    const k = S.meta.bac && cv ? cv / S.meta.bac : 1;  // weight → SAR
+    const wbsPath = id => { const out = []; let w = W[id], g = 0; while (w && g++ < 40) { out.unshift(w); w = W[w.parent]; } return out; };
+    X = { W, A: A_, pred, succ, dd, k, cv, wbsPath };
+    curves();
+  }
+
+  // monthly baseline PV and forecast (update) distribution
+  function spread(map, w, s, f, from) {
+    if (!w || s === null || f === null) return;
+    if (from && s < from) s = from;
+    if (f < s) f = s;
+    const days = (f - s) / DAY + 1, per = w / days;
+    let cur = s;
+    while (cur <= f) {
+      const d = new Date(cur);
+      const me = Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0);
+      const end = Math.min(me, f);
+      const k = mk(cur);
+      map[k] = (map[k] || 0) + per * ((end - cur) / DAY + 1);
+      cur = end + DAY;
+    }
+  }
+  function curves() {
+    const pv = {}, fc = {};
+    let ev = 0, pvdd = 0;
+    const dd = X.dd;
+    S.acts.forEach(a => {
+      if (!a.wt) return;
+      spread(pv, a.wt, a.bs, a.bf);
+      ev += a.wt * a.p / 100;
+      if (a.bs !== null && a.bf !== null) pvdd += a.wt * Math.max(0, Math.min(1, (dd - a.bs + DAY) / (a.bf - a.bs + DAY)));
+      if (a.p < 100) spread(fc, a.wt * (1 - a.p / 100), a.s ?? dd, a.f ?? dd, dd + DAY);
+    });
+    X.pv = pv; X.fc = fc; X.ev = ev; X.pvdd = pvdd;
+    const bac = S.meta.bac || 1;
+    X.planPct = pvdd / bac * 100; X.actPct = ev / bac * 100;
+    const ends = S.acts.map(a => a.f).filter(Boolean), bends = S.acts.map(a => a.bf).filter(Boolean);
+    X.fFinish = (S.meta.update && S.meta.update.finish) || Math.max(...ends);
+    X.bFinish = (S.meta.baseline && S.meta.baseline.finish) || Math.max(...bends);
+    X.bStart = Math.min(...S.acts.map(a => a.bs).filter(Boolean));
+  }
+
+  // public hooks used by app.js (spending plan & performance)
+  window.SCHED = {
+    loaded: () => !!S,
+    planMonthly: () => S ? Object.keys(X.pv).sort().map(k => ({ month: k + '-01', planned: X.pv[k] * X.k })) : [],
+    perfPoint: () => S && S.meta.update ? { date: ds(X.dd), planned: +X.planPct.toFixed(2), actual: +X.actPct.toFixed(2), remarks: 'From P6 update ' + (S.meta.update.file || '') } : null,
+    start: () => S ? ds(X.bStart) : '', finish: () => S ? ds(X.bFinish) : ''
+  };
+
+  // ---------------- status helpers ----------------
+  const isDone = a => a.st === 'Complete';
+  const isActive = a => a.st === 'Active';
+  const isMs = a => a.t === 'Mile' || a.t === 'FinMile';
+  const finVar = a => (a.f !== null && a.bf !== null) ? Math.round((a.f - a.bf) / DAY) : null;
+  const stTag = a => isDone(a) ? '<span class="status good">Completed</span>' : isActive(a) ? '<span class="status warn">In progress</span>' : '<span class="status na">Not started</span>';
+  const critical = a => !isDone(a) && a.tf !== null && a.tf <= 0;
+  const sar = v => 'SAR ' + fmt(v, 0);
+
+  // ---------------- filters ----------------
+  const F = { view: 'lookahead', weeks: 4, ach: 7, achFrom: '', achTo: '', wbs: '', status: '', float: '', q: '', zoom: 'week', group: true, collapsed: new Set() };
+  function windowOf() {
+    const dd = X.dd;
+    if (F.view === 'lookahead') return [dd, dd + F.weeks * 7 * DAY];
+    if (F.view === 'achieved') {
+      if (F.ach === 'custom') return [pd(F.achFrom) ?? dd - 7 * DAY, pd(F.achTo) ?? dd];
+      if (F.ach === 'all') return [X.bStart, dd];
+      return [dd - (+F.ach - 1) * DAY, dd];
+    }
+    return null;
+  }
+  function wbsSet(id) {
+    if (!id) return null;
+    const set = new Set([id]);
+    let grew = true;
+    while (grew) { grew = false; S.wbs.forEach(w => { if (set.has(w.parent) && !set.has(w.id)) { set.add(w.id); grew = true; } }); }
+    return set;
+  }
+  function filtered() {
+    const win = windowOf();
+    const ws = wbsSet(F.wbs);
+    const q = F.q.trim().toLowerCase();
+    const dd = X.dd;
+    return S.acts.filter(a => {
+      if (ws && !ws.has(a.w)) return false;
+      if (F.status && a.st !== F.status) return false;
+      if (F.float === 'crit' && !critical(a)) return false;
+      if (F.float === 'near' && !(a.tf !== null && a.tf <= 10 && !isDone(a))) return false;
+      if (F.float === 'neg' && !(a.tf !== null && a.tf < 0 && !isDone(a))) return false;
+      if (q && !(a.c + ' ' + a.n + ' ' + (X.W[a.w]?.code || '') + ' ' + (X.W[a.w]?.name || '')).toLowerCase().includes(q)) return false;
+      switch (F.view) {
+        case 'lookahead': return !isDone(a) && a.s !== null && a.s <= win[1] && (a.f ?? a.s) >= win[0];
+        case 'achieved': return (a.as !== null && a.as >= win[0] && a.as <= win[1]) || (a.af !== null && a.af >= win[0] && a.af <= win[1]);
+        case 'delayed': return !isDone(a) && ((finVar(a) || 0) > 0 || (a.st === 'NotStart' && a.bs !== null && a.bs < dd));
+        case 'critical': return critical(a);
+        case 'milestones': return isMs(a);
+        default: return true;
+      }
+    });
+  }
+
+  // ---------------- schedule tab ----------------
+  function renderSchedule() {
+    const host = $('#schedBody');
+    if (!S) {
+      host.innerHTML = `<div class="card empty"><h3>No P6 schedule loaded</h3><p>Go to <b>Import File</b> and drop the baseline <code>.xer</code> and the latest weekly update <code>.xer</code>. Look-ahead, achieved activities, the Gantt chart and the cost/performance forecast are built from them.</p><button class="btn" onclick="APP.showTab('import')">Open Import</button></div>`;
+      $('#schedKpis').innerHTML = '';
+      return;
+    }
+    const all = S.acts, dd = X.dd;
+    const done = all.filter(isDone).length, act = all.filter(isActive).length, ns = all.length - done - act;
+    const la = all.filter(a => !isDone(a) && a.s !== null && a.s <= dd + 28 * DAY && (a.f ?? a.s) >= dd).length;
+    const ach = all.filter(a => (a.as !== null && a.as > dd - 7 * DAY && a.as <= dd) || (a.af !== null && a.af > dd - 7 * DAY && a.af <= dd)).length;
+    const crit = all.filter(critical).length;
+    const spi = X.pvdd ? X.ev / X.pvdd : null;
+    const slip = X.fFinish && X.bFinish ? Math.round((X.fFinish - X.bFinish) / DAY) : null;
+    const K = (lbl, val, hint, key, bar) => `<div class="kpi" data-sk="${key}" tabindex="0"><div class="lbl">${lbl}</div><div class="val">${val}</div>${hint ? `<div class="hint">${hint}</div>` : ''}${bar !== undefined ? `<div class="bar"><i style="width:${Math.max(0, Math.min(100, bar))}%"></i></div>` : ''}</div>`;
+    $('#schedKpis').innerHTML = [
+      K('Data date', fd(dd), (S.meta.update ? 'Update: ' + esc(S.meta.update.file || '') : 'Baseline only'), 'dates'),
+      K('Planned vs actual', `${fmtP(X.planPct, 1)} / ${fmtP(X.actPct, 1)}`, `Weighted by ${S.meta.weighting} · var ${fmtP(X.actPct - X.planPct, 1)}`, 'perf', X.actPct),
+      K('SPI (schedule)', spi ? spi.toFixed(2) : '—', spi ? (spi >= .95 ? '● On track' : spi >= .85 ? '▲ Slight delay' : '■ Behind plan') : '', 'perf'),
+      K('Forecast finish', fd(X.fFinish), slip !== null ? `Baseline ${fd(X.bFinish)} · ${slip > 0 ? '+' + slip + ' d late' : slip < 0 ? Math.abs(slip) + ' d early' : 'on baseline'}` : '', 'dates'),
+      K('Activities', all.length.toLocaleString(), `✓ ${done} done · ▶ ${act} active · ○ ${ns} not started`, 'all', done / all.length * 100),
+      K('Look-ahead 4 wks', la.toLocaleString(), `${ach} achieved last 7 days · ${crit} critical`, 'lookahead')
+    ].join('');
+    $$('#schedKpis .kpi').forEach(k => k.onclick = () => {
+      const key = k.dataset.sk;
+      if (key === 'lookahead' || key === 'all') { F.view = key; syncFilters(); drawGantt(); }
+      else if (key === 'perf') showTab('forecast');
+      else openDates();
+    });
+    syncFilters();
+    drawGantt();
+  }
+
+  function syncFilters() {
+    const wsel = $('#gWbs');
+    if (!wsel.dataset.ready) {
+      wsel.innerHTML = '<option value="">All WBS</option>' + S.wbs.map(w => `<option value="${esc(w.id)}">${' '.repeat(w.depth)}${esc(w.code)} — ${esc(w.name)}</option>`).join('');
+      wsel.dataset.ready = '1';
+    }
+    wsel.value = F.wbs;
+    $$('#gView button').forEach(b => b.classList.toggle('on', b.dataset.v === F.view));
+    $('#gWeeksWrap').style.display = F.view === 'lookahead' ? '' : 'none';
+    $('#gAchWrap').style.display = F.view === 'achieved' ? '' : 'none';
+    $('#gCustom').style.display = F.view === 'achieved' && F.ach === 'custom' ? '' : 'none';
+    $('#gWeeks').value = F.weeks; $('#gAch').value = F.ach; $('#gStatus').value = F.status; $('#gFloat').value = F.float;
+    $$('#gZoom button').forEach(b => b.classList.toggle('on', b.dataset.z === F.zoom));
+    $('#gGroup').checked = F.group;
+  }
+
+  function wireFilters() {
+    $$('#gView button').forEach(b => b.onclick = () => { F.view = b.dataset.v; if (F.view === 'lookahead') F.zoom = 'week'; else if (F.view === 'all' || F.view === 'delayed') F.zoom = 'month'; syncFilters(); drawGantt(); });
+    $$('#gZoom button').forEach(b => b.onclick = () => { F.zoom = b.dataset.z; syncFilters(); drawGantt(); });
+    $('#gWeeks').onchange = e => { F.weeks = +e.target.value; drawGantt(); };
+    $('#gAch').onchange = e => { F.ach = e.target.value === 'custom' || e.target.value === 'all' ? e.target.value : +e.target.value; syncFilters(); drawGantt(); };
+    $('#gFrom').onchange = e => { F.achFrom = e.target.value; drawGantt(); };
+    $('#gTo').onchange = e => { F.achTo = e.target.value; drawGantt(); };
+    $('#gWbs').onchange = e => { F.wbs = e.target.value; drawGantt(); };
+    $('#gStatus').onchange = e => { F.status = e.target.value; drawGantt(); };
+    $('#gFloat').onchange = e => { F.float = e.target.value; drawGantt(); };
+    $('#gSearch').oninput = e => { F.q = e.target.value; clearTimeout(wireFilters.t); wireFilters.t = setTimeout(drawGantt, 200); };
+    $('#gGroup').onchange = e => { F.group = e.target.checked; drawGantt(); };
+    $('#gReset').onclick = () => { Object.assign(F, { view: 'lookahead', weeks: 4, ach: 7, wbs: '', status: '', float: '', q: '', zoom: 'week', group: true }); F.collapsed.clear(); $('#gSearch').value = ''; syncFilters(); drawGantt(); };
+    $('#gCsv').onclick = exportCsv;
+    $('#gExpand').onclick = () => { F.collapsed.clear(); drawGantt(); };
+    $('#gCollapse').onclick = () => { S.wbs.forEach(w => F.collapsed.add(w.id)); drawGantt(); };
+  }
+
+  const PX = { week: 16, month: 3.2, quarter: 1.1 };
+  let lastRows = [];
+  function drawGantt() {
+    const list = filtered();
+    lastRows = list;
+    const win = windowOf();
+    const dd = X.dd;
+    const sum = list.reduce((s, a) => s + a.wt, 0) * X.k;
+    $('#gCount').innerHTML = `<b>${list.length.toLocaleString()}</b> activities${win ? ` · ${fd(win[0])} → ${fd(win[1])}` : ''} · value ${fmtM(sum)} SAR`;
+    const box = $('#gantt');
+    if (!list.length) { box.innerHTML = '<div class="g-empty">No activities match these filters.</div>'; return; }
+    // timeline range
+    let t0, t1;
+    if (F.view === 'lookahead') { t0 = dd - 7 * DAY; t1 = dd + (F.weeks * 7 + 7) * DAY; }
+    else {
+      t0 = Math.min(...list.map(a => Math.min(a.s ?? Infinity, a.bs ?? Infinity)).filter(isFinite));
+      t1 = Math.max(...list.map(a => Math.max(a.f ?? -Infinity, a.bf ?? -Infinity)).filter(isFinite));
+      if (F.view === 'achieved') { t0 = Math.min(t0, win[0]); t1 = Math.max(t1, dd); }
+      t0 -= 7 * DAY; t1 += 14 * DAY;
+    }
+    t0 = new Date(t0); t0 = Date.UTC(t0.getUTCFullYear(), t0.getUTCMonth(), t0.getUTCDate() - ((t0.getUTCDay() + 6) % 7)); // Monday
+    const px = PX[F.zoom];
+    const W = Math.ceil((t1 - t0) / DAY * px) + 40;
+    const x = t => (t - t0) / DAY * px;
+
+    // header
+    let hdTop = '', hdBot = '';
+    for (let m = monthStart(t0); m <= t1; m = addMonths(m, 1)) {
+      const a = Math.max(0, x(m)), b = Math.min(W, x(addMonths(m, 1)));
+      if (b > a) hdTop += `<div class="g-hc" style="left:${a}px;width:${b - a}px">${new Date(m).toLocaleDateString('en-GB', { month: F.zoom === 'quarter' ? 'short' : 'long', year: F.zoom === 'quarter' ? '2-digit' : 'numeric', timeZone: 'UTC' })}</div>`;
+    }
+    let grid = '';
+    if (F.zoom === 'week') {
+      for (let d = t0; d <= t1; d += 7 * DAY) { hdBot += `<div class="g-hc sm" style="left:${x(d)}px;width:${7 * px}px">${new Date(d).getUTCDate()}</div>`; grid += `<i style="left:${x(d)}px"></i>`; }
+    } else {
+      for (let m = monthStart(t0); m <= t1; m = addMonths(m, 1)) grid += `<i style="left:${x(m)}px"></i>`;
+    }
+
+    // rows (grouped by WBS)
+    const LIMIT = 2500;
+    const rows = [];
+    const actRow = (a, depth) => {
+      const fv = finVar(a);
+      const cls = isDone(a) ? 'done' : critical(a) ? 'crit' : isActive(a) ? 'act' : 'ns';
+      let bars = '';
+      if (a.bs !== null && a.bf !== null) bars += `<div class="g-bl" style="left:${x(a.bs)}px;width:${Math.max(2, x(a.bf + DAY) - x(a.bs))}px"></div>`;
+      if (a.s !== null && a.f !== null) {
+        if (isMs(a)) bars += `<div class="g-ms ${cls}" style="left:${x(a.s) - 6}px"></div>`;
+        else {
+          const w = Math.max(3, x(a.f + DAY) - x(a.s));
+          bars += `<div class="g-bar ${cls}" style="left:${x(a.s)}px;width:${w}px"><i style="width:${a.p}%"></i></div>`;
+          if (w > 40 || F.zoom === 'week') bars += `<span class="g-lbl" style="left:${x(a.f + DAY) + 4}px">${a.p ? Math.round(a.p) + '%' : ''}</span>`;
+        }
+      }
+      return `<div class="g-row click" data-act="${esc(a.c)}"><div class="g-left" style="--d:${depth}">
+        <span class="c-id">${esc(a.c)}</span><span class="c-nm" title="${esc(a.n)}">${esc(a.n)}</span>
+        <span class="c-dt">${fd(a.s)}</span><span class="c-dt">${fd(a.f)}</span>
+        <span class="c-n ${fv > 0 ? 'neg' : fv < 0 ? 'pos' : ''}">${fv === null ? '—' : (fv > 0 ? '+' : '') + fv}</span>
+        <span class="c-n">${Math.round(a.p)}%</span><span class="c-n ${a.tf !== null && a.tf < 0 ? 'neg' : ''}">${a.tf === null || isDone(a) ? '—' : Math.round(a.tf)}</span></div>
+        <div class="g-tl" style="width:${W}px">${bars}</div></div>`;
+    };
+    if (F.group) {
+      const byW = {};
+      list.forEach(a => { (byW[a.w] = byW[a.w] || []).push(a); });
+      // include ancestor WBS rows that contain matches
+      const need = new Set();
+      Object.keys(byW).forEach(id => X.wbsPath(id).forEach(w => need.add(w.id)));
+      const hiddenUnder = id => X.wbsPath(id).slice(0, -1).some(w => F.collapsed.has(w.id));
+      const agg = {};
+      list.forEach(a => X.wbsPath(a.w).forEach(w => {
+        const g = agg[w.id] || (agg[w.id] = { s: Infinity, f: -Infinity, n: 0, wt: 0, ev: 0 });
+        if (a.s !== null) g.s = Math.min(g.s, a.s); if (a.f !== null) g.f = Math.max(g.f, a.f);
+        g.n++; g.wt += a.wt; g.ev += a.wt * a.p / 100;
+      }));
+      for (const w of S.wbs) {
+        if (!need.has(w.id) || hiddenUnder(w.id)) continue;
+        const g = agg[w.id];
+        const col = F.collapsed.has(w.id);
+        rows.push(`<div class="g-row g-wbs d${Math.min(w.depth, 4)}" data-wbs="${esc(w.id)}"><div class="g-left" style="--d:${w.depth}">
+          <span class="c-tg">${col ? '▸' : '▾'}</span><span class="c-wbs" title="${esc(w.code + ' ' + w.name)}"><b>${esc(w.code)}</b> ${esc(w.name)}</span>
+          <span class="c-n">${g.n}</span><span class="c-n">${g.wt ? Math.round(g.ev / g.wt * 100) + '%' : ''}</span></div>
+          <div class="g-tl" style="width:${W}px">${isFinite(g.s) ? `<div class="g-sum" style="left:${x(g.s)}px;width:${Math.max(3, x(g.f + DAY) - x(g.s))}px"></div>` : ''}</div></div>`);
+        if (!col) (byW[w.id] || []).sort((a, b) => (a.s ?? 0) - (b.s ?? 0)).forEach(a => { if (rows.length < LIMIT) rows.push(actRow(a, w.depth + 1)); });
+        if (rows.length >= LIMIT) break;
+      }
+      (byW[''] || []).forEach(a => rows.push(actRow(a, 0)));
+    } else {
+      [...list].sort((a, b) => (a.s ?? 0) - (b.s ?? 0)).slice(0, LIMIT).forEach(a => rows.push(actRow(a, 0)));
+    }
+    box.innerHTML = `<div class="g-in" style="width:${W + 800}px">
+      <div class="g-head"><div class="g-left hd"><span class="c-id">Activity ID</span><span class="c-nm">Activity name</span><span class="c-dt">Start</span><span class="c-dt">Finish</span><span class="c-n" title="Finish variance vs baseline (days)">Var d</span><span class="c-n">%</span><span class="c-n" title="Total float (days)">TF</span></div>
+        <div class="g-tl hd" style="width:${W}px"><div class="g-hrow">${hdTop}</div><div class="g-hrow">${hdBot}</div></div></div>
+      <div class="g-body"><div class="g-grid" style="width:${W}px">${grid}<b class="g-dd" style="left:${x(dd)}px" title="Data date ${fd(dd)}"></b>${win && F.view === 'lookahead' ? `<b class="g-win" style="left:${x(win[1] + DAY)}px"></b>` : ''}</div>${rows.join('')}</div></div>
+      ${rows.length >= LIMIT ? `<div class="g-empty">Showing the first ${LIMIT} rows — narrow the filters (WBS / search) to see the rest.</div>` : ''}`;
+    // scroll so the data date is visible
+    box.scrollLeft = Math.max(0, x(dd) - 260);
+  }
+
+  function exportCsv() {
+    const head = ['Activity ID', 'Activity Name', 'WBS Code', 'WBS Name', 'Status', 'BL Start', 'BL Finish', 'Start', 'Finish', 'Actual Start', 'Actual Finish', 'Finish Var (d)', '% Complete', 'Total Float (d)', 'Value (SAR)'];
+    const q = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
+    const lines = [head.map(q).join(',')].concat(lastRows.map(a => [a.c, a.n, X.W[a.w]?.code, X.W[a.w]?.name, a.st, ds(a.bs), ds(a.bf), ds(a.s), ds(a.f), ds(a.as), ds(a.af), finVar(a), a.p, a.tf, Math.round(a.wt * X.k)].map(q).join(',')));
+    const blob = new Blob(['﻿' + lines.join('\n')], { type: 'text/csv' });
+    const l = document.createElement('a'); l.href = URL.createObjectURL(blob); l.download = `activities-${F.view}.csv`; l.click();
+  }
+
+  // ---------------- details ----------------
+  const tiles = arr => `<div class="dtiles">${arr.filter(Boolean).map(([l, v, h]) => `<div class="dtile"><div class="lbl">${l}</div><div class="v">${v}</div>${h ? `<div class="muted small">${h}</div>` : ''}</div>`).join('')}</div>`;
+  const tbl = (head, rows) => `<div class="table-wrap"><table class="tbl"><thead><tr>${head.map(h => `<th class="${h[1] ? 'n' : ''}">${h[0]}</th>`).join('')}</tr></thead><tbody>${rows.join('') || `<tr><td colspan="${head.length}" class="muted">None</td></tr>`}</tbody></table></div>`;
+  const wbsCrumb = id => X.wbsPath(id).map(w => `<span class="crumb click" data-wbs-open="${esc(w.id)}">${esc(w.code)} ${esc(w.name)}</span>`).join(' › ');
+  const actLine = (a, extra) => `<tr class="click" data-act="${esc(a.c)}"><td><b>${esc(a.c)}</b></td><td class="desc">${esc(a.n)}</td><td>${fd(a.s)}</td><td>${fd(a.f)}</td><td class="n">${Math.round(a.p)}%</td><td>${stTag(a)}</td>${extra || ''}</tr>`;
+  const actHead = [['ID'], ['Activity'], ['Start'], ['Finish'], ['%', 1], ['Status']];
+
+  function actDetail(code) {
+    const a = X.A[code];
+    if (!a) return { title: 'Activity not found', body: '' };
+    const fv = finVar(a), sv = a.s !== null && a.bs !== null ? Math.round((a.s - a.bs) / DAY) : null;
+    const rel = (list, i) => tbl([['ID'], ['Activity'], ['Type'], ['Lag d', 1], ['Finish'], ['Status']], (list || []).map(r => { const o = X.A[r[i]]; return o ? `<tr class="click" data-act="${esc(o.c)}"><td><b>${esc(o.c)}</b></td><td class="desc">${esc(o.n)}</td><td>${r[2]}</td><td class="n">${r[3]}</td><td>${fd(o.f)}</td><td>${stTag(o)}</td></tr>` : ''; }));
+    const monthsOf = {};
+    if (a.wt && a.p < 100) spread(monthsOf, a.wt * (1 - a.p / 100) * X.k, a.s ?? X.dd, a.f ?? X.dd, X.dd + DAY);
+    return {
+      title: `${esc(a.c)} — ${esc(a.n)}`,
+      sub: `${wbsCrumb(a.w)}<br>${stTag(a)} ${critical(a) ? '<span class="status bad">Critical</span>' : ''} ${a.nb ? '<span class="status warn">Not in baseline</span>' : ''}`,
+      body: tiles([
+        ['Baseline start', fd(a.bs)], ['Baseline finish', fd(a.bf)],
+        ['Start', fd(a.s), a.as ? 'Actual' : 'Forecast'], ['Finish', fd(a.f), a.af ? 'Actual' : 'Forecast'],
+        ['Start variance', sv === null ? '—' : (sv > 0 ? '+' : '') + sv + ' d'], ['Finish variance', fv === null ? '—' : (fv > 0 ? '+' : '') + fv + ' d', fv > 0 ? 'Late vs baseline' : fv < 0 ? 'Early vs baseline' : ''],
+        ['Original duration', a.d + ' d'], ['Remaining duration', a.rd + ' d'], ['% complete', fmtP(a.p, 1)],
+        ['Total float', a.tf === null ? '—' : Math.round(a.tf) + ' d'], ['Type', esc(a.t)],
+        ['Value (weight)', a.wt ? sar(a.wt * X.k) : '—', a.wt ? fmtP(a.wt / S.meta.bac * 100, 3) + ' of project' : (isMs(a) ? 'Milestone' : 'No cost loaded')],
+        ['Earned', a.wt ? sar(a.wt * a.p / 100 * X.k) : '—'], ['Remaining value', a.wt ? sar(a.wt * (1 - a.p / 100) * X.k) : '—']
+      ]) + (Object.keys(monthsOf).length ? `<h4 class="dsec">Expected value by month (forecast)</h4>` + tbl([['Month'], ['SAR', 1]], Object.keys(monthsOf).sort().map(k => `<tr class="click" data-fmonth="${k}"><td>${monthLabel(k)}</td><td class="n">${fmt(monthsOf[k], 0)}</td></tr>`)) : '') +
+        `<h4 class="dsec">Predecessors (${(X.pred[a.c] || []).length})</h4>` + rel(X.pred[a.c], 0) +
+        `<h4 class="dsec">Successors (${(X.succ[a.c] || []).length})</h4>` + rel(X.succ[a.c], 1)
+    };
+  }
+
+  function wbsDetail(id) {
+    const w = X.W[id];
+    const set = wbsSet(id);
+    const list = S.acts.filter(a => set.has(a.w));
+    const wt = list.reduce((s, a) => s + a.wt, 0), ev = list.reduce((s, a) => s + a.wt * a.p / 100, 0);
+    let pv = 0;
+    list.forEach(a => { if (a.wt && a.bs !== null && a.bf !== null) pv += a.wt * Math.max(0, Math.min(1, (X.dd - a.bs + DAY) / (a.bf - a.bs + DAY))); });
+    const la = list.filter(a => !isDone(a) && a.s !== null && a.s <= X.dd + 28 * DAY && (a.f ?? a.s) >= X.dd);
+    const late = list.filter(a => !isDone(a) && (finVar(a) || 0) > 0).sort((a, b) => finVar(b) - finVar(a));
+    return {
+      title: `WBS ${esc(w.code)} — ${esc(w.name)}`, sub: wbsCrumb(id),
+      body: tiles([['Activities', list.length, `${list.filter(isDone).length} done · ${list.filter(isActive).length} active`], ['Value', sar(wt * X.k), fmtP(wt / S.meta.bac * 100, 2) + ' of project'],
+        ['Planned %', fmtP(wt ? pv / wt * 100 : 0, 1)], ['Actual %', fmtP(wt ? ev / wt * 100 : 0, 1)], ['SPI', pv ? (ev / pv).toFixed(2) : '—'],
+        ['Start → finish', `${fd(Math.min(...list.map(a => a.s).filter(Boolean)))} → ${fd(Math.max(...list.map(a => a.f).filter(Boolean)))}`]]) +
+        `<p><button class="btn" data-wbs-filter="${esc(id)}">Show this WBS in the Gantt →</button></p>` +
+        `<h4 class="dsec">Look-ahead 4 weeks (${la.length})</h4>` + tbl(actHead, la.map(a => actLine(a))) +
+        `<h4 class="dsec">Late vs baseline (${late.length})</h4>` + tbl([...actHead, ['Var d', 1]], late.slice(0, 200).map(a => actLine(a, `<td class="n neg">+${finVar(a)}</td>`)))
+    };
+  }
+
+  function openDates() {
+    A.Details.open(() => ({
+      title: 'Schedule dates', sub: 'Baseline vs latest update',
+      body: tiles([['Baseline file', esc(S.meta.baseline?.file || '—')], ['Update file', esc(S.meta.update?.file || '—')], ['Data date', fd(X.dd)],
+        ['Baseline start', fd(X.bStart)], ['Baseline finish', fd(X.bFinish)], ['Forecast finish', fd(X.fFinish)],
+        ['Finish variance', Math.round((X.fFinish - X.bFinish) / DAY) + ' d'], ['Weighting', S.meta.weighting], ['Activities', S.acts.length.toLocaleString()]]) +
+        `<h4 class="dsec">Critical activities (TF ≤ 0, not complete)</h4>` + tbl([...actHead, ['TF', 1]], S.acts.filter(critical).sort((a, b) => a.tf - b.tf).slice(0, 300).map(a => actLine(a, `<td class="n neg">${Math.round(a.tf)}</td>`)))
+    }));
+  }
+
+  // ---------------- forecast tab ----------------
+  function monthsAhead(n) {
+    const out = [];
+    let m = monthStart(X.dd);
+    for (let i = 0; i < n; i++) { out.push(mk(m)); m = addMonths(m, 1); }
+    return out;
+  }
+  function activeIn(k) {
+    const m0 = Date.UTC(+k.slice(0, 4), +k.slice(5, 7) - 1, 1), m1 = addMonths(m0, 1) - DAY;
+    return S.acts.filter(a => !isDone(a) && a.s !== null && a.f !== null && a.s <= m1 && a.f >= m0 && a.f >= X.dd).map(a => {
+      const v = {};
+      if (a.wt) spread(v, a.wt * (1 - a.p / 100), a.s, a.f, X.dd + DAY);
+      return { a, val: (v[k] || 0) * X.k, starts: a.s >= m0 && a.s <= m1 && !a.as, ends: a.f >= m0 && a.f <= m1 };
+    });
+  }
+  function monthDetail(k) {
+    const list = activeIn(k).sort((x, y) => y.val - x.val);
+    const byW = {};
+    list.forEach(r => { (byW[r.a.w] = byW[r.a.w] || []).push(r); });
+    const pvm = (X.pv[k] || 0) * X.k, fcm = (X.fc[k] || 0) * X.k;
+    const groups = S.wbs.filter(w => byW[w.id]).map(w => {
+      const rs = byW[w.id];
+      const tot = rs.reduce((s, r) => s + r.val, 0);
+      return `<tr class="g-grp"><td colspan="7"><span class="click" data-wbs-open="${esc(w.id)}"><b>${esc(w.code)}</b> ${esc(w.name)}</span> <span class="muted">· ${rs.length} activities · SAR ${fmt(tot, 0)}</span></td></tr>` +
+        rs.map(r => actLine(r.a, `<td class="n">${fmt(r.val, 0)}</td>`)).join('');
+    });
+    return {
+      title: `Required work — ${new Date(k + '-01T00:00:00Z').toLocaleDateString('en-GB', { month: 'long', year: 'numeric', timeZone: 'UTC' })}`,
+      sub: 'Activities forecast to be worked in this month (from the latest update), grouped by WBS',
+      body: tiles([['Baseline planned', sar(pvm)], ['Forecast (update)', sar(fcm)], ['Variance', sar(fcm - pvm)],
+        ['Activities', list.length], ['To start', list.filter(r => r.starts).length], ['To finish', list.filter(r => r.ends).length],
+        ['Critical', list.filter(r => critical(r.a)).length]]) +
+        `<div class="table-wrap"><table class="tbl"><thead><tr><th>ID</th><th>Activity</th><th>Start</th><th>Finish</th><th class="n">%</th><th>Status</th><th class="n">Value this month</th></tr></thead><tbody>${groups.join('') || '<tr><td colspan="7" class="muted">No activities</td></tr>'}</tbody></table></div>`
+    };
+  }
+
+  function renderForecast() {
+    const host = $('#fcBody');
+    if (!S) { host.innerHTML = `<div class="card empty"><h3>No P6 schedule loaded</h3><p>Import the baseline and update <code>.xer</code> files to forecast cost and performance for the coming months.</p><button class="btn" onclick="APP.showTab('import')">Open Import</button></div>`; $('#fcKpis').innerHTML = ''; return; }
+    host.innerHTML = $('#fcTpl').innerHTML;
+    const D = A.derive(A.M);
+    const n = +($('#fcN')?.value || F.fcN || 6);
+    const ahead = monthsAhead(n + 1).slice(1);  // months after the data-date month
+    const cur = mk(X.dd);
+    const allK = [...new Set([...Object.keys(X.pv), ...Object.keys(X.fc), ...D.inv.map(r => (r.to || r.from).slice(0, 7))])].sort();
+    // cumulative series
+    let cp = 0, cf = X.ev * X.k, ca = 0;
+    const certBy = {};
+    D.inv.forEach(r => { const k = (r.to || r.from).slice(0, 7); certBy[k] = (certBy[k] || 0) + r.work; });
+    const sP = [], sF = [], sA = [];
+    allK.forEach(k => {
+      cp += (X.pv[k] || 0) * X.k; sP.push(cp);
+      if (k >= cur) { cf += (X.fc[k] || 0) * X.k; sF.push(cf); } else sF.push(null);
+      ca += certBy[k] || 0; sA.push(k <= cur ? ca : null);
+    });
+    const ci = allK.indexOf(cur);
+    if (ci >= 0) sF[ci] = X.ev * X.k + (X.fc[cur] || 0) * X.k;
+    const bac = S.meta.bac * X.k;
+    const next = ahead[0];
+    const nextPv = (X.pv[next] || 0) * X.k, nextFc = (X.fc[next] || 0) * X.k;
+    const sumN = ks => ks.reduce((s, k) => s + (X.fc[k] || 0), 0) * X.k, sumP = ks => ks.reduce((s, k) => s + (X.pv[k] || 0), 0) * X.k;
+    const K = (l, v, h, key) => `<div class="kpi" data-fk="${key}" tabindex="0"><div class="lbl">${l}</div><div class="val">${v}</div>${h ? `<div class="hint">${h}</div>` : ''}</div>`;
+    const slip = Math.round((X.fFinish - X.bFinish) / DAY);
+    $('#fcKpis').innerHTML = [
+      K('Earned (schedule)', fmtM(X.ev * X.k) + '<small>SAR</small>', `${fmtP(X.actPct, 2)} · planned ${fmtP(X.planPct, 2)}`, 'perf'),
+      K('Certified (IPC)', fmtM(D.cumWork) + '<small>SAR</small>', `Billing ÷ earned ${X.ev ? (D.cumWork / (X.ev * X.k)).toFixed(2) : '—'}`, 'bill'),
+      K('Next month forecast', fmtM(nextFc) + '<small>SAR</small>', `${monthLabel(next)} · baseline ${fmtM(nextPv)}`, 'm:' + next),
+      K(`Next ${n} months forecast`, fmtM(sumN(ahead)) + '<small>SAR</small>', `Baseline ${fmtM(sumP(ahead))} · var ${fmtM(sumN(ahead) - sumP(ahead))}`, 'table'),
+      K('Forecast finish', fd(X.fFinish), slip > 0 ? `+${slip} d vs baseline` : slip < 0 ? `${-slip} d early` : 'On baseline', 'dates'),
+      K('Remaining value', fmtM(bac - X.ev * X.k) + '<small>SAR</small>', `of ${fmtM(bac)} (BAC)`, 'table')
+    ].join('');
+    $$('#fcKpis .kpi').forEach(el => el.onclick = () => {
+      const k = el.dataset.fk;
+      if (k.startsWith('m:')) A.Details.open(() => monthDetail(k.slice(2)));
+      else if (k === 'dates') openDates();
+      else if (k === 'perf') A.Details.open(() => perfDetail());
+      else if (k === 'bill') A.Details.kpi('work');
+      else $('#fcTable').scrollIntoView({ behavior: 'smooth' });
+    });
+    if ($('#fcN')) { $('#fcN').value = n; $('#fcN').onchange = e => { F.fcN = +e.target.value; renderForecast(); }; }
+
+    const col = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+    const base = A.baseOpts;
+    const draw = (id, cfg, pick) => {
+      if (charts[id]) charts[id].destroy();
+      cfg.options.onClick = (e, els) => { if (els.length) { A.markPicked(); pick(els[0].index); } };
+      cfg.options.onHover = (e, els) => { e.native.target.style.cursor = els.length ? 'pointer' : 'default'; };
+      charts[id] = new Chart($('#' + id), cfg);
+    };
+    draw('chFcCum', {
+      type: 'line', data: {
+        labels: allK.map(monthLabel), datasets: [
+          { label: 'Baseline planned', data: sP, borderColor: col('--s2'), backgroundColor: col('--s2'), borderDash: [6, 4], borderWidth: 2, pointRadius: 0, tension: .3 },
+          { label: 'Forecast (update)', data: sF, borderColor: col('--s3'), backgroundColor: col('--s3') + '22', fill: false, borderWidth: 2.5, pointRadius: 0, tension: .3 },
+          { label: 'Certified (IPC)', data: sA, borderColor: col('--s1'), backgroundColor: col('--s1'), borderWidth: 2.5, pointRadius: 3, tension: .3 }
+        ]
+      },
+      options: base({ scales: { x: base().scales.x, y: { ...base().scales.y, ticks: { color: col('--text-2'), callback: v => fmtM(v) } } }, plugins: { ...base().plugins, tooltip: { ...base().plugins.tooltip, callbacks: { label: c => `${c.dataset.label}: SAR ${fmt(c.parsed.y, 0)} (${fmtP(c.parsed.y / bac * 100, 1)})` } } } })
+    }, i => A.Details.open(() => monthDetail(allK[i])));
+    const ks = [cur, ...ahead];
+    draw('chFcMonthly', {
+      type: 'bar', data: {
+        labels: ks.map(monthLabel), datasets: [
+          { label: 'Baseline planned', data: ks.map(k => (X.pv[k] || 0) * X.k), backgroundColor: col('--s2'), borderRadius: 4, maxBarThickness: 28 },
+          { label: 'Forecast (update)', data: ks.map(k => (X.fc[k] || 0) * X.k), backgroundColor: col('--s3'), borderRadius: 4, maxBarThickness: 28 }
+        ]
+      },
+      options: base({ scales: { x: base().scales.x, y: { ...base().scales.y, ticks: { color: col('--text-2'), callback: v => fmtM(v) } } }, plugins: { ...base().plugins, tooltip: { ...base().plugins.tooltip, callbacks: { label: c => `${c.dataset.label}: SAR ${fmt(c.parsed.y, 0)}` } } } })
+    }, i => A.Details.open(() => monthDetail(ks[i])));
+
+    // performance % forecast (cumulative)
+    let pc = 0, fcc = X.ev;
+    const pPct = [], fPct = [];
+    ks.forEach(k => { pc = 0; Object.keys(X.pv).forEach(m => { if (m <= k) pc += X.pv[m]; }); pPct.push(pc / S.meta.bac * 100); fcc += X.fc[k] || 0; fPct.push(fcc / S.meta.bac * 100); });
+    draw('chFcPerf', {
+      type: 'line', data: {
+        labels: ks.map(monthLabel), datasets: [
+          { label: 'Planned % (baseline)', data: pPct, borderColor: col('--s2'), backgroundColor: col('--s2'), borderDash: [6, 4], borderWidth: 2, pointRadius: 3 },
+          { label: 'Forecast % (update)', data: fPct, borderColor: col('--s3'), backgroundColor: col('--s3'), borderWidth: 2.5, pointRadius: 3 }
+        ]
+      },
+      options: base({ scales: { x: base().scales.x, y: { ...base().scales.y, ticks: { color: col('--text-2'), callback: v => v.toFixed(0) + '%' } } }, plugins: { ...base().plugins, tooltip: { ...base().plugins.tooltip, callbacks: { label: c => `${c.dataset.label}: ${fmtP(c.parsed.y, 2)}` } } } })
+    }, i => A.Details.open(() => monthDetail(ks[i])));
+
+    // month table
+    let cP = 0; Object.keys(X.pv).forEach(m => { if (m <= cur) cP += X.pv[m]; });
+    let cF = X.ev + (X.fc[cur] || 0);
+    $('#fcTable').innerHTML = `<thead><tr><th>Month</th><th class="n">Baseline planned</th><th class="n">Forecast</th><th class="n">Variance</th><th class="n">Planned cum %</th><th class="n">Forecast cum %</th><th class="n">Activities</th><th class="n">To start</th><th class="n">To finish</th><th class="n">Critical</th></tr></thead><tbody>` +
+      ahead.map(k => {
+        cP += X.pv[k] || 0; cF += X.fc[k] || 0;
+        const L = activeIn(k);
+        const p = (X.pv[k] || 0) * X.k, f = (X.fc[k] || 0) * X.k;
+        return `<tr class="click" data-fmonth="${k}"><td><b>${monthLabel(k)}</b></td><td class="n">${fmt(p, 0)}</td><td class="n">${fmt(f, 0)}</td><td class="n ${f < p ? 'neg' : 'pos'}">${fmt(f - p, 0)}</td><td class="n">${fmtP(cP / S.meta.bac * 100, 2)}</td><td class="n">${fmtP(cF / S.meta.bac * 100, 2)}</td><td class="n">${L.length}</td><td class="n">${L.filter(r => r.starts).length}</td><td class="n">${L.filter(r => r.ends).length}</td><td class="n">${L.filter(r => critical(r.a)).length}</td></tr>`;
+      }).join('') + '</tbody>';
+
+    // next month required activities by WBS (top)
+    const L = activeIn(next).sort((a, b) => b.val - a.val);
+    const byW = {};
+    L.forEach(r => { const top = X.wbsPath(r.a.w)[Math.min(1, X.wbsPath(r.a.w).length - 1)] || { id: '', code: '', name: 'No WBS' }; const g = byW[top.id] || (byW[top.id] = { w: top, n: 0, v: 0 }); g.n++; g.v += r.val; });
+    $('#fcNextTitle').textContent = `Required work next month — ${monthLabel(next)} (${L.length} activities)`;
+    $('#fcNext').innerHTML = `<thead><tr><th>WBS</th><th class="n">Activities</th><th class="n">Forecast value</th><th class="n">Share</th></tr></thead><tbody>` +
+      Object.values(byW).sort((a, b) => b.v - a.v).map(g => `<tr class="click" data-wbs-open="${esc(g.w.id)}"><td><b>${esc(g.w.code)}</b> ${esc(g.w.name)}</td><td class="n">${g.n}</td><td class="n">${fmt(g.v, 0)}</td><td class="n">${fmtP(nextFc ? g.v / nextFc * 100 : 0, 1)}</td></tr>`).join('') + '</tbody>';
+    $('#fcNextAll').onclick = () => A.Details.open(() => monthDetail(next));
+  }
+
+  function perfDetail() {
+    const top = S.wbs.filter(w => w.depth <= 1);
+    const rows = top.map(w => {
+      const set = wbsSet(w.id), list = S.acts.filter(a => set.has(a.w));
+      const wt = list.reduce((s, a) => s + a.wt, 0), ev = list.reduce((s, a) => s + a.wt * a.p / 100, 0);
+      let pv = 0; list.forEach(a => { if (a.wt && a.bs !== null && a.bf !== null) pv += a.wt * Math.max(0, Math.min(1, (X.dd - a.bs + DAY) / (a.bf - a.bs + DAY))); });
+      return { w, wt, ev, pv };
+    }).filter(r => r.wt);
+    return {
+      title: 'Performance vs cost', sub: 'Earned value from the P6 update (weighted by ' + S.meta.weighting + '), scaled to the contract value',
+      body: tiles([['BAC', sar(S.meta.bac * X.k)], ['PV at data date', sar(X.pvdd * X.k), fmtP(X.planPct, 2)], ['EV at data date', sar(X.ev * X.k), fmtP(X.actPct, 2)],
+        ['SPI', X.pvdd ? (X.ev / X.pvdd).toFixed(2) : '—'], ['Schedule variance', sar((X.ev - X.pvdd) * X.k)], ['Certified (IPC)', sar(A.derive(A.M).cumWork)]]) +
+        `<h4 class="dsec">By WBS</h4>` + tbl([['WBS'], ['Value', 1], ['Planned %', 1], ['Actual %', 1], ['SPI', 1]], rows.map(r => `<tr class="click" data-wbs-open="${esc(r.w.id)}"><td>${' '.repeat(r.w.depth)}<b>${esc(r.w.code)}</b> ${esc(r.w.name)}</td><td class="n">${fmt(r.wt * X.k, 0)}</td><td class="n">${fmtP(r.pv / r.wt * 100, 1)}</td><td class="n">${fmtP(r.ev / r.wt * 100, 1)}</td><td class="n">${r.pv ? (r.ev / r.pv).toFixed(2) : '—'}</td></tr>`))
+    };
+  }
+
+  // ---------------- clicks ----------------
+  document.addEventListener('click', e => {
+    const a = e.target.closest('[data-act]');
+    if (a) { A.Details.open(() => actDetail(a.dataset.act)); return; }
+    const w = e.target.closest('.g-wbs[data-wbs]');
+    if (w) { const id = w.dataset.wbs; if (e.target.closest('.c-tg')) { F.collapsed.has(id) ? F.collapsed.delete(id) : F.collapsed.add(id); drawGantt(); } else A.Details.open(() => wbsDetail(id)); return; }
+    const wo = e.target.closest('[data-wbs-open]');
+    if (wo) { A.Details.open(() => wbsDetail(wo.dataset.wbsOpen)); return; }
+    const wf = e.target.closest('[data-wbs-filter]');
+    if (wf) { A.Details.close(); F.wbs = wf.dataset.wbsFilter; F.view = 'all'; F.zoom = 'month'; showTab('schedule'); syncFilters(); drawGantt(); return; }
+    const fm = e.target.closest('[data-fmonth]');
+    if (fm) { A.Details.open(() => monthDetail(fm.dataset.fmonth)); }
+  });
+
+  function showTab(n) { A.showTab(n); }
+
+  // ---------------- import / export ----------------
+  function setStatus(t) { $('#xerStatus').innerHTML = t; }
+  function readText(file) { return new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.onerror = () => rej(fr.error); fr.readAsText(file, 'windows-1252'); }); }
+  async function onXer(kind, file) {
+    setStatus(`Reading <b>${esc(file.name)}</b> (${(file.size / 1048576).toFixed(1)} MB)…`);
+    await new Promise(r => setTimeout(r, 30));
+    try {
+      const parsed = readFile(await readText(file), file.name);
+      pending[kind] = parsed; pending['f' + kind] = file.name;
+      // keep the other half from the current schedule if not re-imported
+      const msg = [`✓ ${kind === 'b' ? 'Baseline' : 'Update'} "${file.name}": ${parsed.acts.length.toLocaleString()} activities, ${parsed.wbs.length} WBS nodes, ${parsed.rels.length.toLocaleString()} relationships · data date ${fd(parsed.proj.dataDate)}`];
+      S = combine(pending.b, pending.u, { b: pending.fb || S?.meta.baseline?.file, u: pending.fu || S?.meta.update?.file });
+      await idbSet('schedule', S);
+      $('#gWbs').dataset.ready = '';
+      index();
+      msg.push(`✓ Schedule ready: ${S.acts.length.toLocaleString()} activities, weighted by ${S.meta.weighting}${pending.b && pending.u ? '' : ' — import the ' + (pending.b ? 'update' : 'baseline') + ' file too for baseline-vs-update comparison'}`);
+      msg.push('To publish for everyone: click "Download schedule.json" and upload it to the repo folder data/.');
+      setStatus(msg.join('<br>'));
+      A.render(); renderSchedule(); renderForecast();
+    } catch (e) { setStatus('✗ ' + esc(e.message)); }
+  }
+  function wireImport() {
+    [['b', 'dropXerB', 'fileXerB'], ['u', 'dropXerU', 'fileXerU']].forEach(([k, d, i]) => {
+      const drop = $('#' + d), inp = $('#' + i);
+      inp.onchange = () => inp.files[0] && onXer(k, inp.files[0]);
+      ['dragenter', 'dragover'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('over'); }));
+      ['dragleave', 'drop'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('over'); }));
+      drop.addEventListener('drop', e => e.dataTransfer.files[0] && onXer(k, e.dataTransfer.files[0]));
+    });
+    $('#schedExport').onclick = () => {
+      if (!S) return setStatus('Nothing to export yet.');
+      const blob = new Blob([JSON.stringify(S)], { type: 'application/json' });
+      const l = document.createElement('a'); l.href = URL.createObjectURL(blob); l.download = 'schedule.json'; l.click();
+    };
+    $('#schedClear').onclick = async () => { await idbDel('schedule'); pending.b = pending.u = null; S = null; setStatus('Local schedule cleared — reloading published schedule…'); await boot(true); };
+  }
+
+  async function boot(skipLocal) {
+    let s = null, src = '';
+    if (!skipLocal) { s = await idbGet('schedule'); if (s) src = 'local import'; }
+    if (!s) {
+      try { const r = await fetch('data/schedule.json', { cache: 'no-store' }); if (r.ok) { s = await r.json(); src = 'published data/schedule.json'; } } catch (e) { }
+    }
+    S = s;
+    if (S) { index(); setStatus(`Schedule loaded from ${src}: baseline <b>${esc(S.meta.baseline?.file || '—')}</b> · update <b>${esc(S.meta.update?.file || '—')}</b> · data date ${fd(X.dd)}`); }
+    A.render(); renderSchedule(); renderForecast();
+  }
+
+  wireFilters();
+  wireImport();
+  A.onTab = n => { if (n === 'schedule') { renderSchedule(); } if (n === 'forecast') renderForecast(); };
+  A.whenReady(() => boot());
+})();

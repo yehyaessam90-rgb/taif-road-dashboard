@@ -38,6 +38,8 @@
   <button class="tab active" data-tab="overview">Overview</button>
   <button class="tab" data-tab="performance">Performance</button>
   <button class="tab" data-tab="spending">Spending Plan</button>
+  <button class="tab" data-tab="schedule">Schedule &amp; Gantt</button>
+  <button class="tab" data-tab="forecast">Forecast</button>
   <button class="tab" data-tab="quantities">Quantities (BOQ)</button>
   <button class="tab" data-tab="invoices">Invoices (IPC)</button>
   <button class="tab import" data-tab="import">⇪ Import File</button>
@@ -110,6 +112,59 @@
     </div>
   </section>
 
+  <!-- SCHEDULE -->
+  <section class="panel" id="tab-schedule">
+    <div class="kpis" id="schedKpis"></div>
+    <div class="card gantt-card">
+      <div class="g-toolbar">
+        <div class="seg" id="gView">
+          <button data-v="lookahead">Look-ahead</button><button data-v="achieved">Achieved</button><button data-v="delayed">Delayed</button><button data-v="critical">Critical</button><button data-v="milestones">Milestones</button><button data-v="all">All</button>
+        </div>
+        <span id="gWeeksWrap"><select id="gWeeks"><option value="1">1 week</option><option value="2">2 weeks</option><option value="3">3 weeks</option><option value="4">4 weeks</option><option value="6">6 weeks</option><option value="8">8 weeks</option><option value="12">12 weeks</option></select></span>
+        <span id="gAchWrap"><select id="gAch"><option value="7">Last week</option><option value="14">Last 2 weeks</option><option value="30">Last month</option><option value="90">Last 3 months</option><option value="all">Since start</option><option value="custom">Custom…</option></select>
+          <span id="gCustom"><input type="date" id="gFrom"> → <input type="date" id="gTo"></span></span>
+        <div class="seg" id="gZoom"><button data-z="week">Week</button><button data-z="month">Month</button><button data-z="quarter">Quarter</button></div>
+      </div>
+      <div class="g-toolbar">
+        <select id="gWbs" class="wide"><option value="">All WBS</option></select>
+        <select id="gStatus"><option value="">All status</option><option value="NotStart">Not started</option><option value="Active">In progress</option><option value="Complete">Completed</option></select>
+        <select id="gFloat"><option value="">All float</option><option value="crit">Critical (TF ≤ 0)</option><option value="neg">Negative float</option><option value="near">Near critical (≤ 10 d)</option></select>
+        <input type="search" id="gSearch" placeholder="Search ID, activity or WBS…">
+        <label class="chk"><input type="checkbox" id="gGroup" checked> Group by WBS</label>
+        <button class="btn ghost" id="gExpand" title="Expand all WBS">⊞</button><button class="btn ghost" id="gCollapse" title="Collapse all WBS">⊟</button>
+        <button class="btn ghost" id="gCsv">⬇ CSV</button><button class="btn ghost" id="gReset">Reset</button>
+      </div>
+      <div class="g-meta"><span id="gCount"></span><span class="g-legend"><i class="lg done"></i>Completed <i class="lg act"></i>In progress <i class="lg ns"></i>Not started <i class="lg crit"></i>Critical <i class="lg bl"></i>Baseline <i class="lg dd"></i>Data date</span></div>
+      <div class="gantt" id="gantt"></div>
+    </div>
+    <div id="schedBody"></div>
+  </section>
+
+  <!-- FORECAST -->
+  <section class="panel" id="tab-forecast">
+    <div class="kpis" id="fcKpis"></div>
+    <div id="fcBody"></div>
+    <template id="fcTpl">
+      <div class="card">
+        <div class="card-h"><h3>Cost forecast — baseline vs update vs certified (cumulative, SAR excl. VAT)</h3><span class="muted">Click a month for the required activities</span></div>
+        <div class="chart-box tall"><canvas id="chFcCum"></canvas></div>
+      </div>
+      <div class="grid g-1-1">
+        <div class="card"><div class="card-h"><h3>Monthly value — coming months</h3></div><div class="chart-box"><canvas id="chFcMonthly"></canvas></div></div>
+        <div class="card"><div class="card-h"><h3>Performance forecast — cumulative %</h3></div><div class="chart-box"><canvas id="chFcPerf"></canvas></div></div>
+      </div>
+      <div class="card">
+        <div class="card-h"><h3>Coming months — planned vs forecast</h3>
+          <select id="fcN"><option value="3">Next 3 months</option><option value="6">Next 6 months</option><option value="12">Next 12 months</option><option value="24">Next 24 months</option></select></div>
+        <div class="table-wrap"><table class="tbl" id="fcTable"></table></div>
+      </div>
+      <div class="card">
+        <div class="card-h"><h3 id="fcNextTitle">Required work next month</h3><button class="btn" id="fcNextAll">All activities by WBS →</button></div>
+        <div class="table-wrap"><table class="tbl" id="fcNext"></table></div>
+      </div>
+    </template>
+  </section>
+
   <!-- QUANTITIES -->
   <section class="panel" id="tab-quantities">
     <div class="kpis" id="qtyKpis"></div>
@@ -165,15 +220,17 @@
         </div>
       </div>
       <div class="card">
-        <div class="card-h"><h3>2 · Load baseline from Primavera (.xer)</h3></div>
-        <p>Import the baseline XER to build the planned S-curve / spending plan (cost-loaded activities, or duration-weighted if no costs). It fills the <b>Baseline_Plan</b> sheet.</p>
-        <label class="drop" id="dropXer">
-          <input type="file" id="fileXer" accept=".xer,.txt">
-          <span class="drop-ic">⏱</span>
-          <span><b>Drop the .xer file here</b> or click to browse</span>
-          <span class="muted small">Parsed locally in your browser — nothing is uploaded</span>
-        </label>
-        <div id="xerResult" class="muted small"></div>
+        <div class="card-h"><h3>2 · Primavera P6 schedule (.xer)</h3></div>
+        <p>Drop the <b>baseline</b> and the latest <b>weekly update</b>. They feed the look-ahead, achieved activities, Gantt chart and the cost / performance forecast. Files are parsed in your browser — nothing is uploaded.</p>
+        <div class="drop2">
+          <label class="drop" id="dropXerB"><input type="file" id="fileXerB" accept=".xer,.txt"><span class="drop-ic">⏱</span><span><b>Baseline .xer</b></span><span class="muted small">e.g. Target Plan Final</span></label>
+          <label class="drop" id="dropXerU"><input type="file" id="fileXerU" accept=".xer,.txt"><span class="drop-ic">↻</span><span><b>Update .xer</b></span><span class="muted small">latest weekly update</span></label>
+        </div>
+        <div id="xerStatus" class="muted small xer-status">No schedule loaded.</div>
+        <div class="row-btns">
+          <button class="btn" id="schedExport">⬇ Download schedule.json</button>
+          <button class="btn danger" id="schedClear">↺ Clear local schedule</button>
+        </div>
       </div>
     </div>
     <div class="card">
@@ -187,6 +244,7 @@
         <li>When correct, click <b>Export what’s loaded</b> (or use your file), rename it to <code>project-data.xlsx</code>.</li>
         <li>On GitHub open the repo → folder <code>data/</code> → <b>Add file › Upload files</b> → drop it → <b>Commit</b>.</li>
         <li>GitHub Pages republishes in ~1 minute — every viewer now sees the new data.</li>
+        <li>Schedule: after importing the .xer files click <b>Download schedule.json</b> and upload it to <code>data/</code> the same way.</li>
       </ol>
     </div>
   </section>
@@ -201,5 +259,6 @@
 <script src="data/default-data.js"></script>
 <script src="assets/xer.js"></script>
 <script src="assets/app.js"></script>
+<script src="assets/schedule.js"></script>
 </body>
 </html>

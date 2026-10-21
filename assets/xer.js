@@ -3,7 +3,8 @@
 (function () {
   const KEEP = new Set(['PROJECT', 'TASK', 'TASKRSRC']);
 
-  function parseXer(text) {
+  function parseXer(text, keep) {
+    keep = keep || KEEP;
     const tables = {};
     let name = null, fields = null, rows = null;
     let i = 0;
@@ -17,7 +18,7 @@
       if (line.startsWith('%T\t')) {
         name = line.slice(3).trim();
         fields = null;
-        rows = KEEP.has(name) ? (tables[name] = []) : null;
+        rows = keep.has(name) ? (tables[name] = []) : null;
       } else if (line.startsWith('%F\t')) {
         fields = line.slice(3).split('\t');
       } else if (line.startsWith('%R\t') && rows && fields) {

@@ -240,10 +240,11 @@
     const last = inv[inv.length - 1];
     const dataDate = toDate(p.dataDate) || (last && toDate(last.to)) || new Date();
     const start = toDate(p.start) || (inv[0] && toDate(inv[0].from));
-    const finish = toDate(p.finish);
+    const finish = toDate(p.finish) || (window.SCHED && window.SCHED.loaded() ? toDate(window.SCHED.finish()) : null);
 
     // baseline (monthly → cumulative)
-    const base = [...m.baseline].sort((a, b) => a.month.localeCompare(b.month));
+    const SC = window.SCHED && window.SCHED.loaded() ? window.SCHED : null;
+    const base = [...(m.baseline.length ? m.baseline : SC ? SC.planMonthly() : [])].sort((a, b) => a.month.localeCompare(b.month));
     let c = 0;
     const planCum = {};
     base.forEach(b => { c += b.planned; planCum[b.month.slice(0, 7)] = c; });
@@ -262,7 +263,8 @@
       return v;
     };
     const pvNow = planAt(dataDate);
-    const perf = [...m.performance].sort((a, b) => a.date.localeCompare(b.date));
+    const sp = SC && SC.perfPoint();
+    const perf = [...m.performance, ...(sp && !m.performance.some(x => x.date.slice(0, 7) === sp.date.slice(0, 7)) ? [sp] : [])].sort((a, b) => a.date.localeCompare(b.date));
     const lastPerf = perf[perf.length - 1];
 
     const timePct = start && finish ? Math.max(0, Math.min(100, (dataDate - start) / (finish - start) * 100)) : null;
@@ -899,6 +901,7 @@
     $$('.panel').forEach(p => p.classList.toggle('active', p.id === 'tab-' + name));
     Object.values(charts).forEach(c => c.resize());
     try { localStorage.setItem('trd_tab', name); } catch (e) { }
+    if (window.APP && APP.onTab) APP.onTab(name);
   }
   $$('.tab').forEach(t => t.onclick = () => showTab(t.dataset.tab));
   $('#fsBtn').onclick = () => {
@@ -944,29 +947,6 @@
       render();
     } catch (e) { log(['✗ Import failed: ' + e.message]); }
   });
-  wireDrop('dropXer', 'fileXer', file => {
-    $('#xerResult').textContent = 'Reading ' + file.name + ' …';
-    const fr = new FileReader();
-    fr.onload = () => {
-      try {
-        const res = XER.buildBaseline(fr.result, (M.project.cv || 0) + (M.project.co || 0));
-        M.baseline = res.plan;
-        if (!M.project.finish && res.project.finish) M.project.finish = res.project.finish;
-        if (!M.project.start && res.project.start) M.project.start = res.project.start;
-        SOURCE = SOURCE.startsWith('Imported') ? SOURCE : 'Imported: baseline ' + file.name;
-        save({ file: file.name, at: new Date().toISOString() });
-        const s = res.stats;
-        const msg = [`Imported baseline "${file.name}"`, `✓ ${s.activities.toLocaleString()} activities (${s.costLoaded ? 'cost-loaded, budget SAR ' + fmt(s.totalCost, 0) : 'no costs → weighted by duration'})`,
-          `✓ Plan spans ${s.firstMonth} → ${s.lastMonth} (${res.plan.length} months), scaled to contract value`,
-          `• Project ${res.project.name} · start ${res.project.start} · finish ${res.project.finish} · data date ${res.project.dataDate}`,
-          '', 'Tip: click "Export what’s loaded" to get the workbook with Baseline_Plan filled, then publish it.'];
-        log(msg);
-        $('#xerResult').textContent = '✓ Baseline loaded — ' + res.plan.length + ' months';
-        render();
-      } catch (e) { $('#xerResult').textContent = '✗ ' + e.message; log(['✗ XER import failed: ' + e.message]); }
-    };
-    fr.readAsText(file, 'windows-1252');
-  });
   $('#exportBtn').onclick = () => XLSX.writeFile(modelToWb(M), 'project-data.xlsx');
   $('#resetBtn').onclick = resetData;
   function resetData() {
@@ -974,6 +954,14 @@
     log(['Local import cleared — showing published data.']);
     boot(true);
   }
+
+  // ---------- public API (used by schedule.js) ----------
+  const ready = [];
+  window.APP = {
+    get M() { return M; }, render: () => M && render(), derive, Details, showTab, esc, fmt, fmtM, fmtP, baseOpts,
+    markPicked: () => { PICKED_AT = Date.now(); }, onTab: null,
+    whenReady: fn => { if (M) fn(); else ready.push(fn); }
+  };
 
   // ---------- boot ----------
   async function boot(skipLocal) {
@@ -995,6 +983,7 @@
     }
     M = model;
     render();
+    ready.splice(0).forEach(fn => fn());
   }
   try { const th = localStorage.getItem('trd_theme'); if (th) document.documentElement.dataset.theme = th; } catch (e) { }
   try { const tb = localStorage.getItem('trd_tab'); if (tb && $('#tab-' + tb)) showTab(tb); } catch (e) { }

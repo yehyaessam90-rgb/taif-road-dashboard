@@ -21,3 +21,8 @@ Settings → Pages → *Deploy from a branch* → `main` / root → Save. The si
 - `data/default-data.js` — embedded copy used when opening `index.html` straight from disk
 - `templates/Dashboard_Update_Template.xlsx` — blank update template
 - `tools/build_data.py` — regenerates the data files from the IPC-07 source values
+
+## Schedule (Primavera P6)
+- **Schedule & Gantt** tab: look-ahead (1–12 weeks), achieved (last week / month / custom), delayed, critical, milestones; WBS, status, float and text filters; Gantt with baseline bars and data-date line; CSV export.
+- **Forecast** tab: baseline vs update vs certified cumulative cost, monthly forecast for coming months, performance % forecast and the activities required each month by WBS.
+- Weekly update: Import File → drop the baseline and the update `.xer` → **Download schedule.json** → upload it to `data/` (replace the old one).
