@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Taif Road Sec-C Dashboard</title>
+<meta name="description" content="Project performance and spending-plan dashboard — Development of Taif Road, Section C">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Cairo:wght@400;600;700&display=swap" rel="stylesheet">
+<link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="assets/styles.css">
+<script src="assets/vendor/chart.umd.min.js"></script>
+<script src="assets/vendor/xlsx.full.min.js"></script>
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <div class="logo" aria-hidden="true">
+      <svg viewBox="0 0 32 32" width="30" height="30"><path d="M4 26 L13 6 h6 L28 26" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linejoin="round"/><path d="M16 9v3M16 15v3M16 21v3" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>
+    </div>
+    <div>
+      <h1 id="projName">Development of Taif Road — Section C</h1>
+      <div class="sub" id="projSub">Project Controls Dashboard</div>
+    </div>
+  </div>
+  <div class="actions">
+    <span class="pill" id="dataDatePill">Data date —</span>
+    <span class="pill src" id="sourcePill" title="Data source">Source —</span>
+    <button class="btn" id="themeBtn" title="Toggle light / dark"><svg viewBox="0 0 24 24" width="16" height="16"><circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 4a8 8 0 0 1 0 16z" fill="currentColor"/></svg></button>
+    <button class="btn" id="fsBtn" title="Full screen">
+      <svg viewBox="0 0 24 24" width="16" height="16"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      <span>Full screen</span>
+    </button>
+  </div>
+</header>
+
+<nav class="tabs" role="tablist">
+  <button class="tab active" data-tab="overview">Overview</button>
+  <button class="tab" data-tab="performance">Performance</button>
+  <button class="tab" data-tab="spending">Spending Plan</button>
+  <button class="tab" data-tab="quantities">Quantities (BOQ)</button>
+  <button class="tab" data-tab="invoices">Invoices (IPC)</button>
+  <button class="tab import" data-tab="import">⇪ Import File</button>
+</nav>
+
+<div id="banner" class="banner hidden"></div>
+
+<main>
+  <!-- OVERVIEW -->
+  <section class="panel active" id="tab-overview">
+    <div class="kpis" id="kpis"></div>
+    <div class="grid g-2-1">
+      <div class="card">
+        <div class="card-h"><h3>Cumulative progress — S-curve</h3><span class="muted" id="scurveNote"></span></div>
+        <div class="chart-box tall"><canvas id="chScurve"></canvas></div>
+      </div>
+      <div class="card">
+        <div class="card-h"><h3>Contract value consumed</h3></div>
+        <div class="donut-wrap"><canvas id="chDonut"></canvas><div class="donut-center" id="donutCenter"></div></div>
+        <ul class="mini-list" id="contractList"></ul>
+      </div>
+    </div>
+    <div class="grid g-1-1">
+      <div class="card">
+        <div class="card-h"><h3>Work done per IPC (SAR, excl. VAT)</h3></div>
+        <div class="chart-box"><canvas id="chMonthly"></canvas></div>
+      </div>
+      <div class="card">
+        <div class="card-h"><h3>Top sections by value certified</h3></div>
+        <div class="chart-box"><canvas id="chTopSections"></canvas></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- PERFORMANCE -->
+  <section class="panel" id="tab-performance">
+    <div class="kpis" id="perfKpis"></div>
+    <div class="grid g-1-1">
+      <div class="card">
+        <div class="card-h"><h3>Planned vs Actual progress %</h3><span class="muted">Physical (Performance sheet) &amp; financial</span></div>
+        <div class="chart-box tall"><canvas id="chPerf"></canvas></div>
+      </div>
+      <div class="card">
+        <div class="card-h"><h3>SPI trend</h3><span class="muted">Earned ÷ Planned (cumulative)</span></div>
+        <div class="chart-box tall"><canvas id="chSpi"></canvas></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-h"><h3>Progress by section</h3><span class="muted">Cumulative certified ÷ contract amount</span></div>
+      <div class="table-wrap"><table class="tbl" id="tblSections"></table></div>
+    </div>
+  </section>
+
+  <!-- SPENDING -->
+  <section class="panel" id="tab-spending">
+    <div class="kpis" id="spendKpis"></div>
+    <div class="card">
+      <div class="card-h"><h3>Spending plan — planned vs actual (cumulative, SAR excl. VAT)</h3><span class="muted" id="spendNote"></span></div>
+      <div class="chart-box tall"><canvas id="chSpendCum"></canvas></div>
+    </div>
+    <div class="grid g-1-1">
+      <div class="card">
+        <div class="card-h"><h3>Monthly cash flow — planned vs actual</h3></div>
+        <div class="chart-box"><canvas id="chSpendMonthly"></canvas></div>
+      </div>
+      <div class="card">
+        <div class="card-h"><h3>Advance payment recovery</h3></div>
+        <div class="chart-box"><canvas id="chAdvance"></canvas></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- QUANTITIES -->
+  <section class="panel" id="tab-quantities">
+    <div class="kpis" id="qtyKpis"></div>
+    <div class="card">
+      <div class="card-h">
+        <h3>BOQ items — quantities &amp; amounts</h3>
+        <div class="filters">
+          <select id="fBill"><option value="">All bills</option></select>
+          <select id="fProg">
+            <option value="">All items</option>
+            <option value="active">With progress</option>
+            <option value="period">Progress this period</option>
+            <option value="none">No progress</option>
+          </select>
+          <input id="fSearch" type="search" placeholder="Search item / description…">
+        </div>
+      </div>
+      <div class="table-wrap tall"><table class="tbl" id="tblItems"></table></div>
+      <div class="muted small" id="itemsFoot"></div>
+    </div>
+  </section>
+
+  <!-- INVOICES -->
+  <section class="panel" id="tab-invoices">
+    <div class="kpis" id="invKpis"></div>
+    <div class="card">
+      <div class="card-h"><h3>Project payment log</h3><span class="muted">SAR</span></div>
+      <div class="table-wrap"><table class="tbl" id="tblInvoices"></table></div>
+    </div>
+    <div class="card">
+      <div class="card-h"><h3>Invoice build-up (gross with VAT)</h3></div>
+      <div class="chart-box"><canvas id="chInvStack"></canvas></div>
+    </div>
+  </section>
+
+  <!-- IMPORT -->
+  <section class="panel" id="tab-import">
+    <div class="grid g-1-1">
+      <div class="card">
+        <div class="card-h"><h3>1 · Update from Excel</h3></div>
+        <p>Upload the filled <b>dashboard data workbook</b> (.xlsx). All tabs refresh instantly and the file is remembered in this browser.</p>
+        <label class="drop" id="dropXlsx">
+          <input type="file" id="fileXlsx" accept=".xlsx,.xls">
+          <span class="drop-ic">⇪</span>
+          <span><b>Drop the Excel file here</b> or click to browse</span>
+          <span class="muted small">Sheets: Project · Invoices · Sections · BOQ_Items · Baseline_Plan · Performance</span>
+        </label>
+        <div class="row-btns">
+          <a class="btn" href="templates/Dashboard_Update_Template.xlsx" download>⬇ Blank template</a>
+          <a class="btn" href="data/project-data.xlsx" download>⬇ Current data file</a>
+          <button class="btn ghost" id="exportBtn">⬇ Export what’s loaded</button>
+          <button class="btn danger" id="resetBtn">↺ Reset to published data</button>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-h"><h3>2 · Load baseline from Primavera (.xer)</h3></div>
+        <p>Import the baseline XER to build the planned S-curve / spending plan (cost-loaded activities, or duration-weighted if no costs). It fills the <b>Baseline_Plan</b> sheet.</p>
+        <label class="drop" id="dropXer">
+          <input type="file" id="fileXer" accept=".xer,.txt">
+          <span class="drop-ic">⏱</span>
+          <span><b>Drop the .xer file here</b> or click to browse</span>
+          <span class="muted small">Parsed locally in your browser — nothing is uploaded</span>
+        </label>
+        <div id="xerResult" class="muted small"></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-h"><h3>Import log</h3></div>
+      <pre id="importLog" class="log">No file imported in this session.</pre>
+    </div>
+    <div class="card">
+      <div class="card-h"><h3>Publish for everyone (GitHub)</h3></div>
+      <ol class="steps">
+        <li>Fill the workbook and check it here using <b>Import</b> (only you see it — stored in your browser).</li>
+        <li>When correct, click <b>Export what’s loaded</b> (or use your file), rename it to <code>project-data.xlsx</code>.</li>
+        <li>On GitHub open the repo → folder <code>data/</code> → <b>Add file › Upload files</b> → drop it → <b>Commit</b>.</li>
+        <li>GitHub Pages republishes in ~1 minute — every viewer now sees the new data.</li>
+      </ol>
+    </div>
+  </section>
+</main>
+
+<footer class="foot">
+  <span id="footTxt">Contract 20250928162 · RTCC – IC ICTAS JV · Consultant WSP · Client RCRC</span>
+  <span class="muted">All amounts SAR</span>
+</footer>
+
+<div id="tooltipHost"></div>
+<script src="data/default-data.js"></script>
+<script src="assets/xer.js"></script>
+<script src="assets/app.js"></script>
+</body>
+</html>
