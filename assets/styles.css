@@ -176,3 +176,30 @@ body.fs .chart-box.tall { height: 42vh; }
   .btn span { display: none; }
   .filters input { min-width: 0; width: 100%; }
 }
+
+/* ---------- drill-down ---------- */
+.kpi { cursor: pointer; transition: transform .12s, border-color .12s; }
+.kpi:hover, .kpi:focus-visible { border-color: var(--brand); transform: translateY(-1px); outline: none; }
+.kpi:hover::after { content: "Details ›"; position: absolute; top: 12px; right: 12px; font-size: 11px; font-weight: 600; color: var(--brand); }
+tr.click { cursor: pointer; }
+tr.click:hover td { background: color-mix(in srgb, var(--brand) 7%, var(--surface)); }
+canvas { -webkit-tap-highlight-color: transparent; }
+
+.modal { position: fixed; inset: 0; z-index: 50; display: flex; align-items: flex-start; justify-content: center; padding: 4vh 16px; }
+.modal.hidden { display: none; }
+.modal-back { position: absolute; inset: 0; background: rgba(8,16,12,.55); backdrop-filter: blur(2px); }
+.modal-card { position: relative; width: min(1100px, 100%); max-height: 92vh; display: flex; flex-direction: column; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; box-shadow: 0 20px 60px rgba(0,0,0,.3); animation: fade .2s ease; }
+.modal-h { display: flex; align-items: flex-start; gap: 10px; padding: 16px 18px; border-bottom: 1px solid var(--border); }
+.modal-h > div { flex: 1; min-width: 0; }
+.modal-h h2 { margin: 0; font-size: 18px; }
+.modal-h .muted { margin-top: 3px; font-size: 13px; }
+.modal-b { overflow: auto; padding: 16px 18px 22px; }
+.modal-b .table-wrap { max-height: 420px; }
+.chart-box.mchart { height: 210px; margin-bottom: 14px; }
+.dtiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; margin-bottom: 8px; }
+.dtile { background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; }
+.dtile .lbl { font-size: 11.5px; color: var(--text-2); font-weight: 600; text-transform: uppercase; letter-spacing: .3px; }
+.dtile .v { font-size: 16px; font-weight: 700; margin-top: 3px; }
+.dsec { margin: 18px 0 8px; font-size: 14px; }
+.dnote { margin: 10px 0; padding: 9px 12px; border-radius: 8px; font-size: 13px; background: color-mix(in srgb, var(--warn) 12%, var(--surface)); border: 1px solid color-mix(in srgb, var(--warn) 35%, transparent); }
+@media (max-width: 640px) { .modal { padding: 0; } .modal-card { max-height: 100vh; height: 100vh; border-radius: 0; } }
