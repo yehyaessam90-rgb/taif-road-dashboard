@@ -24,8 +24,8 @@
     </div>
   </div>
   <div class="actions">
-    <span class="pill" id="dataDatePill">Data date —</span>
-    <span class="pill src" id="sourcePill" title="Data source">Source —</span>
+    <span class="pill click" id="dataDatePill" data-kpi="time" title="Click for details">Data date —</span>
+    <span class="pill src click" id="sourcePill" title="Data source — click to open Import">Source —</span>
     <button class="btn" id="themeBtn" title="Toggle light / dark"><svg viewBox="0 0 24 24" width="16" height="16"><circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 4a8 8 0 0 1 0 16z" fill="currentColor"/></svg></button>
     <button class="btn" id="fsBtn" title="Full screen">
       <svg viewBox="0 0 24 24" width="16" height="16"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
@@ -50,22 +50,22 @@
   <section class="panel active" id="tab-overview">
     <div class="kpis" id="kpis"></div>
     <div class="grid g-2-1">
-      <div class="card">
+      <div class="card" data-card="scurve">
         <div class="card-h"><h3>Cumulative progress — S-curve</h3><span class="muted" id="scurveNote"></span></div>
         <div class="chart-box tall"><canvas id="chScurve"></canvas></div>
       </div>
-      <div class="card">
+      <div class="card" data-card="cv">
         <div class="card-h"><h3>Contract value consumed</h3></div>
         <div class="donut-wrap"><canvas id="chDonut"></canvas><div class="donut-center" id="donutCenter"></div></div>
         <ul class="mini-list" id="contractList"></ul>
       </div>
     </div>
     <div class="grid g-1-1">
-      <div class="card">
+      <div class="card" data-card="work">
         <div class="card-h"><h3>Work done per IPC (SAR, excl. VAT)</h3></div>
         <div class="chart-box"><canvas id="chMonthly"></canvas></div>
       </div>
-      <div class="card">
+      <div class="card" data-card="sections">
         <div class="card-h"><h3>Top sections by value certified</h3></div>
         <div class="chart-box"><canvas id="chTopSections"></canvas></div>
       </div>
@@ -76,16 +76,16 @@
   <section class="panel" id="tab-performance">
     <div class="kpis" id="perfKpis"></div>
     <div class="grid g-1-1">
-      <div class="card">
+      <div class="card" data-card="spi">
         <div class="card-h"><h3>Planned vs Actual progress %</h3><span class="muted">Physical (Performance sheet) &amp; financial</span></div>
         <div class="chart-box tall"><canvas id="chPerf"></canvas></div>
       </div>
-      <div class="card">
+      <div class="card" data-card="spi">
         <div class="card-h"><h3>SPI trend</h3><span class="muted">Earned ÷ Planned (cumulative)</span></div>
         <div class="chart-box tall"><canvas id="chSpi"></canvas></div>
       </div>
     </div>
-    <div class="card">
+    <div class="card" data-card="sections">
       <div class="card-h"><h3>Progress by section</h3><span class="muted">Cumulative certified ÷ contract amount</span></div>
       <div class="table-wrap"><table class="tbl" id="tblSections"></table></div>
     </div>
@@ -94,16 +94,16 @@
   <!-- SPENDING -->
   <section class="panel" id="tab-spending">
     <div class="kpis" id="spendKpis"></div>
-    <div class="card">
+    <div class="card" data-card="pv">
       <div class="card-h"><h3>Spending plan — planned vs actual (cumulative, SAR excl. VAT)</h3><span class="muted" id="spendNote"></span></div>
       <div class="chart-box tall"><canvas id="chSpendCum"></canvas></div>
     </div>
     <div class="grid g-1-1">
-      <div class="card">
+      <div class="card" data-card="pv">
         <div class="card-h"><h3>Monthly cash flow — planned vs actual</h3></div>
         <div class="chart-box"><canvas id="chSpendMonthly"></canvas></div>
       </div>
-      <div class="card">
+      <div class="card" data-card="advance">
         <div class="card-h"><h3>Advance payment recovery</h3></div>
         <div class="chart-box"><canvas id="chAdvance"></canvas></div>
       </div>
@@ -113,7 +113,7 @@
   <!-- QUANTITIES -->
   <section class="panel" id="tab-quantities">
     <div class="kpis" id="qtyKpis"></div>
-    <div class="card">
+    <div class="card" data-card="items">
       <div class="card-h">
         <h3>BOQ items — quantities &amp; amounts</h3>
         <div class="filters">
@@ -135,11 +135,11 @@
   <!-- INVOICES -->
   <section class="panel" id="tab-invoices">
     <div class="kpis" id="invKpis"></div>
-    <div class="card">
+    <div class="card" data-card="work">
       <div class="card-h"><h3>Project payment log</h3><span class="muted">SAR</span></div>
       <div class="table-wrap"><table class="tbl" id="tblInvoices"></table></div>
     </div>
-    <div class="card">
+    <div class="card" data-card="net">
       <div class="card-h"><h3>Invoice build-up (gross with VAT)</h3></div>
       <div class="chart-box"><canvas id="chInvStack"></canvas></div>
     </div>
@@ -193,7 +193,7 @@
 </main>
 
 <footer class="foot">
-  <span id="footTxt">Contract 20250928162 · RTCC – IC ICTAS JV · Consultant WSP · Client RCRC</span>
+  <span id="footTxt" class="click" data-kpi="cv">Contract 20250928162 · RTCC – IC ICTAS JV · Consultant WSP · Client RCRC</span>
   <span class="muted">All amounts SAR</span>
 </footer>
 

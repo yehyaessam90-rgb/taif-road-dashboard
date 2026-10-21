@@ -7,7 +7,8 @@
   const $$ = s => [...document.querySelectorAll(s)];
   const charts = {};
   const PICK = {};       // chart id → click handler (index, datasetIndex)
-  let LAST = null;       // last derived state, used by the details panel
+  let LAST = null;
+  let PICKED_AT = 0;     // set when a chart element handled the click, so the card-level click is skipped       // last derived state, used by the details panel
   let M = null;          // current model
   let SOURCE = '';       // human label of the data source
 
@@ -308,7 +309,7 @@
     const pick = PICK[id];
     if (pick) {
       cfg.options = cfg.options || {};
-      cfg.options.onClick = (e, els) => { if (els.length) pick(els[0].index, els[0].datasetIndex); };
+      cfg.options.onClick = (e, els) => { if (els.length) { PICKED_AT = Date.now(); pick(els[0].index, els[0].datasetIndex); } };
       cfg.options.onHover = (e, els) => { e.native.target.style.cursor = els.length ? 'pointer' : 'default'; };
     }
     charts[id] = new Chart(el, cfg);
@@ -403,7 +404,7 @@
       ['Remaining (excl. VAT)', 'SAR ' + fmtM(D.cv - D.cumWork)],
       ['Net certified incl. VAT', 'SAR ' + fmtM(D.cumNet)],
       ['Advance balance (incl. VAT)', 'SAR ' + fmtM(D.advBal)]
-    ].map(([a, b]) => `<li><span>${a}</span><b>${b}</b></li>`).join('');
+    ].map(([a, b], i) => `<li class="click" data-kpi="${['work', 'remain', 'net', 'advance'][i]}"><span>${a}</span><b>${b}</b></li>`).join('');
 
     draw('chMonthly', {
       type: 'bar',
@@ -850,6 +851,8 @@
         remain: () => ({ title: 'Remaining work', sub: 'Contract value not yet certified', body: tiles([['Remaining (contract)', sar(D.cv - D.cumWork)], ['Remaining to plan', D.pvNow !== null ? sar(D.planTotal - D.pvNow) : '—']]) + sec('By section', secTable()) }),
         advance: () => ({ title: 'Advance payment', sub: `Recovered at ${fmtP(p.advPct || 10, 0)} of each IPC (+VAT)`, body: tiles([['Advance paid', sar(p.advance)], ['Recovered to date', sar(D.cumRec * (1 + D.vatR))], ['Balance', sar(D.advBal)], ['Recovered %', fmtP(D.cumRec * (1 + D.vatR) / p.advance * 100)]]) + table([['IPC'], ['Recovery excl. VAT', 1], ['Recovery incl. VAT', 1], ['Cumulative', 1], ['Balance', 1]], D.inv.map(r => `<tr class="click" data-ipc="${esc(r.ipc)}"><td><b>${ipcName(r.ipc)}</b></td><td class="n">${fmt(r.recovery)}</td><td class="n">${fmt(r.recovery * (1 + D.vatR))}</td><td class="n">${fmt(r.cumRec * (1 + D.vatR))}</td><td class="n">${fmt(r.advBal)}</td></tr>`)) }),
         gross: () => V.net(), retention: () => V.net(),
+        scurve: () => ({ title: 'Cumulative progress — S-curve', sub: 'Planned vs actual by month (click a month for details)', body: noBase() + tiles([['Planned to date', D.pvNow !== null ? sar(D.pvNow) : '—', fmtP(D.planPct)], ['Actual to date', sar(D.cumWork), fmtP(D.finPct)], ['SPI', D.spi !== null ? D.spi.toFixed(3) : '—']]) + sec('All months', monthTable(false)) }),
+        sections: () => ({ title: 'All sections', sub: `${M.sections.length} sections — click a section for its BOQ items`, body: tiles([['Contract total', sar(M.sections.reduce((a, s) => a + s.contract, 0))], ['Certified to date', sar(M.sections.reduce((a, s) => a + s.cum, 0))], ['This period', sar(M.sections.reduce((a, s) => a + s.curr, 0))], ['Sections started', `${M.sections.filter(s => s.cum > 0).length} / ${M.sections.filter(s => s.contract > 0).length}`]]) + secTable() }),
         items: () => itemList('All BOQ items', M.items),
         active: () => itemList('Items with progress', M.items.filter(i => i.tqty > 0).sort((a, b) => b.tamt - a.tamt)),
         value: () => itemList('Items by value done', M.items.filter(i => i.tamt > 0).sort((a, b) => b.tamt - a.tamt)),
@@ -872,12 +875,20 @@
   })();
 
   document.addEventListener('click', e => {
-    const t = e.target.closest('[data-ipc],[data-sec],[data-item],[data-month],.kpi[data-k]');
-    if (!t || e.target.closest('th')) return;
+    if (e.target.closest('#sourcePill')) { showTab('import'); return; }
+    if (e.target.closest('th, input, select, label, a, .modal-h')) return;
+    const t = e.target.closest('[data-ipc],[data-sec],[data-item],[data-month],[data-kpi],.kpi[data-k]');
+    if (!t) {
+      // anywhere else on a card (title, empty chart area) → that card's full details
+      const c = e.target.closest('.card[data-card]');
+      if (c && Date.now() - PICKED_AT > 300 && !e.target.closest('.modal')) Details.kpi(c.dataset.card);
+      return;
+    }
     if (t.dataset.ipc) Details.ipc(t.dataset.ipc);
     else if (t.dataset.sec) Details.section(t.dataset.sec);
     else if (t.dataset.item) Details.item(t.dataset.item);
     else if (t.dataset.month) Details.month(t.dataset.month);
+    else if (t.dataset.kpi) Details.kpi(t.dataset.kpi);
     else if (t.dataset.k) Details.kpi(t.dataset.k, t.dataset.grp);
   });
   document.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.classList?.contains('kpi')) e.target.click(); });

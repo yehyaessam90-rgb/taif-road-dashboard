@@ -203,3 +203,11 @@ canvas { -webkit-tap-highlight-color: transparent; }
 .dsec { margin: 18px 0 8px; font-size: 14px; }
 .dnote { margin: 10px 0; padding: 9px 12px; border-radius: 8px; font-size: 13px; background: color-mix(in srgb, var(--warn) 12%, var(--surface)); border: 1px solid color-mix(in srgb, var(--warn) 35%, transparent); }
 @media (max-width: 640px) { .modal { padding: 0; } .modal-card { max-height: 100vh; height: 100vh; border-radius: 0; } }
+.click { cursor: pointer; }
+.mini-list li.click:hover b, .mini-list li.click:hover span { color: var(--brand); }
+.card[data-card] { cursor: pointer; transition: border-color .12s; }
+.card[data-card]:hover { border-color: color-mix(in srgb, var(--brand) 45%, var(--border)); }
+.card[data-card] .card-h h3::after { content: "  ›"; color: var(--brand); opacity: 0; transition: opacity .12s; }
+.card[data-card]:hover .card-h h3::after { opacity: 1; }
+.card[data-card] input, .card[data-card] select { cursor: auto; }
+#footTxt.click:hover, .pill.click:hover { text-decoration: underline; }
