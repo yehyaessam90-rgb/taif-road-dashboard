@@ -137,7 +137,7 @@
     const cv = (A.M.project.cv || 0) + (A.M.project.co || 0);
     const k = S.meta.bac && cv ? cv / S.meta.bac : 1;  // weight → SAR
     const wbsPath = id => { const out = []; let w = W[id], g = 0; while (w && g++ < 40) { out.unshift(w); w = W[w.parent]; } return out; };
-    X = { W, A: A_, pred, succ, dd, k, cv, wbsPath };
+    X = { W, A: A_, pred, succ, dd, k, cv, wbsPath, junctions: null };
     curves();
   }
 
@@ -182,7 +182,8 @@
     loaded: () => !!S,
     planMonthly: () => S ? Object.keys(X.pv).sort().map(k => ({ month: k + '-01', planned: X.pv[k] * X.k })) : [],
     perfPoint: () => S && S.meta.update ? { date: ds(X.dd), planned: +X.planPct.toFixed(2), actual: +X.actPct.toFixed(2), remarks: 'From P6 update ' + (S.meta.update.file || '') } : null,
-    start: () => S ? ds(X.bStart) : '', finish: () => S ? ds(X.bFinish) : ''
+    start: () => S ? ds(X.bStart) : '', finish: () => S ? ds(X.bFinish) : '',
+    status: () => S ? { dataDate: ds(X.dd), planPct: X.planPct, actPct: X.actPct, spi: X.pvdd ? X.ev / X.pvdd : null, fFinish: ds(X.fFinish), bFinish: ds(X.bFinish), update: S.meta.update ? S.meta.update.file : '' } : null
   };
 
   // ---------------- status helpers ----------------
@@ -471,6 +472,153 @@
     }));
   }
 
+  // ---------------- junctions ----------------
+  // lane labels as named in P6 (rename here if the site uses West / East)
+  const LANE = { Left: 'Left Lane', Right: 'Right Lane', Single: 'Single deck' };
+  const JORDER = ['7', '5', '3', '1'];
+  function wStats(set) {
+    const list = S.acts.filter(a => set.has(a.w));
+    let wt = 0, ev = 0, pv = 0, s0 = Infinity, s1 = -Infinity, b0 = Infinity, b1 = -Infinity;
+    list.forEach(a => {
+      wt += a.wt; ev += a.wt * a.p / 100;
+      if (a.wt && a.bs !== null && a.bf !== null) pv += a.wt * Math.max(0, Math.min(1, (X.dd - a.bs + DAY) / (a.bf - a.bs + DAY)));
+      if (a.s !== null) s0 = Math.min(s0, a.s); if (a.f !== null) s1 = Math.max(s1, a.f);
+      if (a.bs !== null) b0 = Math.min(b0, a.bs); if (a.bf !== null) b1 = Math.max(b1, a.bf);
+    });
+    return { list, n: list.length, wt, ev, pv, plan: wt ? pv / wt * 100 : 0, act: wt ? ev / wt * 100 : 0, spi: pv ? ev / pv : null,
+      start: isFinite(s0) ? s0 : null, finish: isFinite(s1) ? s1 : null, bStart: isFinite(b0) ? b0 : null, bFinish: isFinite(b1) ? b1 : null,
+      done: list.filter(isDone).length, active: list.filter(isActive).length };
+  }
+  const laneOf = id => { const p = X.wbsPath(id).map(w => w.name).join(' / '); return /left lane/i.test(p) ? 'Left' : /righ?t lane/i.test(p) ? 'Right' : 'Single'; };
+  function junctions() {
+    if (X.junctions) return X.junctions;
+    const kidsOf = id => S.wbs.filter(w => w.parent === id);
+    const found = {};
+    S.wbs.forEach(w => { const m = /^junction[\s-]*([1357])\b/i.exec(w.name); if (m && !found[m[1]] && /\(\s*\d+\+\d+/.test(w.name)) found[m[1]] = w; });
+    X.junctions = JORDER.filter(k => found[k]).map(k => {
+      const root = found[k];
+      const ch = (/(\d+\+\d+)/.exec(root.name) || [])[1] || '';
+      const set = wbsSet(root.id);
+      // components: walk down single-child levels, then take the children
+      let node = root;
+      while (kidsOf(node.id).length === 1) node = kidsOf(node.id)[0];
+      const comps = kidsOf(node.id).map(c => {
+        const lanes = kidsOf(c.id).filter(x => /left|righ?t/i.test(x.name)).map(x => ({ lane: /left/i.test(x.name) ? 'Left' : 'Right', id: x.id, st: wStats(wbsSet(x.id)) }));
+        return { id: c.id, name: c.name, st: wStats(wbsSet(c.id)), lanes };
+      });
+      const pours = S.acts.filter(a => set.has(a.w) && /deck\s*slab/i.test(a.n) && /concrete/i.test(a.n) && !/bit+u?minous|bitminous/i.test(a.n)).map(a => {
+        const unit = X.wbsPath(a.w).map(w => w.name).reverse().find(n => /unit/i.test(n)) || '';
+        const span = (/\(([^)]+)\)/.exec(unit) || /deck slab-?\s*([A-Z]\d+\s*to\s*[A-Z]\d+)/i.exec(a.n) || [])[1] || unit;
+        return { a, lane: laneOf(a.w), unit: unit.replace(/\s*\(.*$/, ''), span: span.replace(/\s*-\s*steel structure/i, '') };
+      }).sort((x, y) => x.lane.localeCompare(y.lane) || x.unit.localeCompare(y.unit, undefined, { numeric: true }));
+      return { key: 'J' + k, name: 'Junction ' + k, ch, jeddah: /jeddah/i.test(root.name), root, set, st: wStats(set), comps, pours };
+    });
+    return X.junctions;
+  }
+  const JF = { j: '', lane: '' };
+  const pctCell = (v, pl) => `<div class="pbar"><div class="t"><i style="width:${Math.min(100, v)}%"></i>${pl !== undefined && pl !== null ? `<span class="pl" style="left:${Math.min(100, pl)}%"></span>` : ''}</div><span>${fmtP(v, 1)}</span></div>`;
+  const spiTag = v => v === null ? '<span class="status na">—</span>' : `<span class="status ${v >= .95 ? 'good' : v >= .85 ? 'warn' : 'bad'}">${v.toFixed(2)}</span>`;
+  function renderJunctions() {
+    const host = $('#juncBody');
+    if (!host) return;
+    if (!S) { host.innerHTML = `<div class="card empty"><h3>No P6 schedule loaded</h3><p class="viewer-only">The schedule has not been published yet.</p><button class="btn admin-only" onclick="APP.showTab('import')">Open Import</button></div>`; return; }
+    const J = junctions();
+    if (!J.length) { host.innerHTML = '<div class="card empty"><h3>No junction WBS found in the schedule</h3></div>'; return; }
+    const dd = X.dd;
+    const cards = J.map(j => {
+      const st = j.st, slip = st.finish && st.bFinish ? Math.round((st.finish - st.bFinish) / DAY) : null;
+      const pours = j.pours, started = pours.filter(p => p.a.as).length, doneP = pours.filter(p => isDone(p.a)).length;
+      const next = pours.filter(p => !p.a.as && p.a.s !== null).sort((x, y) => x.a.s - y.a.s)[0];
+      return `<div class="card jcard click" data-wbs-open="${esc(j.root.id)}">
+        <div class="jh"><div><h3>${j.name}</h3><div class="muted small">Ch ${esc(j.ch)}${j.jeddah ? ' · Jeddah Junction' : ''} · ${st.n} activities</div></div>${spiTag(st.spi)}</div>
+        <div class="jbig"><b>${fmtP(st.act, 1)}</b><span class="muted">actual · planned ${fmtP(st.plan, 1)}</span></div>
+        ${pctCell(st.act, st.plan)}
+        <div class="jrows">
+          <div><span>Variance</span><b class="${st.act < st.plan ? 'neg' : 'pos'}">${(st.act - st.plan >= 0 ? '+' : '') + (st.act - st.plan).toFixed(1)}%</b></div>
+          <div><span>Baseline finish</span><b>${fd(st.bFinish)}</b></div>
+          <div><span>Forecast finish</span><b class="${slip > 0 ? 'neg' : ''}">${fd(st.finish)}${slip ? ` (${slip > 0 ? '+' : ''}${slip} d)` : ''}</b></div>
+          <div><span>Deck slab pours</span><b>${doneP} done · ${started} started / ${pours.length}</b></div>
+          <div><span>Next deck pour</span><b>${next ? fd(next.a.s) + ' · ' + esc(LANE[next.lane]) : started === pours.length ? 'All started' : '—'}</b></div>
+        </div></div>`;
+    }).join('');
+
+    const compTables = J.map(j => {
+      const hasLanes = j.comps.some(c => c.lanes.length);
+      return `<details class="jcomp" ${j.key === 'J7' ? 'open' : ''}><summary><b>${j.name}</b> <span class="muted">· Ch ${esc(j.ch)} · actual ${fmtP(j.st.act, 1)} / planned ${fmtP(j.st.plan, 1)}</span></summary>
+        <div class="table-wrap"><table class="tbl"><thead><tr><th>Component</th><th class="n">Activities</th><th>Progress (actual · ▏planned)</th><th class="n">Planned</th><th class="n">Actual</th><th class="n">SPI</th>${hasLanes ? `<th>${LANE.Left}</th><th>${LANE.Right}</th>` : ''}<th>Forecast finish</th></tr></thead><tbody>` +
+        j.comps.map(c => {
+          const ln = k => { const l = c.lanes.find(x => x.lane === k); return l ? `<td class="click" data-wbs-open="${esc(l.id)}">${pctCell(l.st.act, l.st.plan)}</td>` : '<td class="muted">—</td>'; };
+          return `<tr class="click" data-wbs-open="${esc(c.id)}"><td><b>${esc(c.name)}</b></td><td class="n">${c.st.n}</td><td>${pctCell(c.st.act, c.st.plan)}</td><td class="n">${fmtP(c.st.plan, 1)}</td><td class="n">${fmtP(c.st.act, 1)}</td><td class="n">${spiTag(c.st.spi)}</td>${hasLanes ? ln('Left') + ln('Right') : ''}<td>${fd(c.st.finish)}</td></tr>`;
+        }).join('') + '</tbody></table></div></details>';
+    }).join('');
+
+    host.innerHTML = `<div class="jgrid">${cards}</div>
+      <div class="grid g-1-1"><div class="card"><div class="card-h"><h3>Planned vs actual by junction</h3><span class="muted">Weighted by cost · data date ${fd(dd)}</span></div><div class="chart-box"><canvas id="chJunc"></canvas></div></div>
+      <div class="card"><div class="card-h"><h3>Deck slab concrete — status</h3></div><div class="chart-box"><canvas id="chJPour"></canvas></div></div></div>
+      <div class="card"><div class="card-h"><h3>Progress by component</h3><span class="muted">Click any row for its activities</span></div>${compTables}</div>
+      <div class="card" id="pourCard"><div class="card-h"><h3>Deck slab concrete pours — planned dates</h3>
+        <div class="g-toolbar" style="margin:0"><div class="seg" id="jfJ"><button data-j="">All</button>${J.map(j => `<button data-j="${j.key}">${j.name}</button>`).join('')}</div>
+        <div class="seg" id="jfL"><button data-l="">Both lanes</button><button data-l="Left">${LANE.Left}</button><button data-l="Right">${LANE.Right}</button></div></div></div>
+        <div id="pourBody"></div>
+        <p class="muted small">Pour window = the P6 "Deck Slab … Concrete" activity of each span. Baseline = ${esc(S.meta.baseline?.file || '—')}; forecast / actual = ${esc(S.meta.update?.file || '—')} (data date ${fd(dd)}).</p></div>`;
+    drawPours();
+    $$('#jfJ button').forEach(b => b.onclick = e => { e.stopPropagation(); JF.j = b.dataset.j; drawPours(); });
+    $$('#jfL button').forEach(b => b.onclick = e => { e.stopPropagation(); JF.lane = b.dataset.l; drawPours(); });
+
+    const col = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+    const base = A.baseOpts;
+    const mk = (id, cfg, pick) => {
+      if (charts[id]) charts[id].destroy();
+      cfg.options.onClick = (e, els) => { if (els.length) { A.markPicked(); pick(els[0].index, els[0].datasetIndex); } };
+      cfg.options.onHover = (e, els) => { e.native.target.style.cursor = els.length ? 'pointer' : 'default'; };
+      charts[id] = new Chart($('#' + id), cfg);
+    };
+    mk('chJunc', { type: 'bar', data: { labels: J.map(j => j.name), datasets: [
+      { label: 'Planned %', data: J.map(j => +j.st.plan.toFixed(2)), backgroundColor: col('--s2'), borderRadius: 4, maxBarThickness: 34 },
+      { label: 'Actual %', data: J.map(j => +j.st.act.toFixed(2)), backgroundColor: col('--s1'), borderRadius: 4, maxBarThickness: 34 }] },
+      options: base({ scales: { x: base().scales.x, y: { ...base().scales.y, ticks: { color: col('--text-2'), callback: v => v + '%' } } }, plugins: { ...base().plugins, tooltip: { ...base().plugins.tooltip, callbacks: { label: c => `${c.dataset.label}: ${fmtP(c.parsed.y, 1)}` } } } })
+    }, i => A.Details.open(() => wbsDetail(J[i].root.id)));
+    const cat = j => ['Completed', 'In progress', 'Not started — on time', 'Not started — late'].map(k => j.pours.filter(p => (isDone(p.a) ? 'Completed' : p.a.as ? 'In progress' : (p.a.s > p.a.bs + DAY) ? 'Not started — late' : 'Not started — on time') === k).length);
+    const cats = ['Completed', 'In progress', 'Not started — on time', 'Not started — late'], cc = [col('--good'), col('--s1'), col('--muted'), col('--bad')];
+    mk('chJPour', { type: 'bar', data: { labels: J.map(j => j.name), datasets: cats.map((c, k) => ({ label: c, data: J.map(j => cat(j)[k]), backgroundColor: cc[k], stack: 's', maxBarThickness: 34 })) },
+      options: base({ scales: { x: { ...base().scales.x, stacked: true }, y: { ...base().scales.y, stacked: true, ticks: { color: col('--text-2'), precision: 0 } } } })
+    }, i => { JF.j = J[i].key; drawPours(); $('#pourCard').scrollIntoView({ behavior: 'smooth' }); });
+  }
+  function drawPours() {
+    const J = junctions().filter(j => !JF.j || j.key === JF.j);
+    $$('#jfJ button').forEach(b => b.classList.toggle('on', b.dataset.j === JF.j));
+    $$('#jfL button').forEach(b => b.classList.toggle('on', b.dataset.l === JF.lane));
+    const all = J.flatMap(j => j.pours.filter(p => !JF.lane || p.lane === JF.lane || p.lane === 'Single'));
+    if (!all.length) { $('#pourBody').innerHTML = '<p class="muted">No deck slab pours for this filter.</p>'; return; }
+    const t0 = Math.min(...all.flatMap(p => [p.a.bs, p.a.s]).filter(v => v !== null)) - 15 * DAY;
+    const t1 = Math.max(...all.flatMap(p => [p.a.bf, p.a.f]).filter(v => v !== null)) + 15 * DAY;
+    const x = t => ((t - t0) / (t1 - t0) * 100).toFixed(2) + '%';
+    const months = [];
+    for (let m = monthStart(t0); m <= t1; m = addMonths(m, 1)) if (m >= t0) months.push(m);
+    const stepM = Math.max(1, Math.ceil(months.length / 7));
+    const ticks = months.filter((m, i) => i % stepM === 0);
+    const head = `<div class="pt-axis">${ticks.map(m => `<span style="left:${x(m)}">${new Date(m).toLocaleDateString('en-GB', { month: 'short', year: '2-digit', timeZone: 'UTC' })}</span>`).join('')}<b class="pt-dd" style="left:${x(X.dd)}"></b></div>`;
+    const rows = [];
+    J.forEach(j => {
+      const lanes = [...new Set(j.pours.map(p => p.lane))].filter(l => !JF.lane || l === JF.lane || l === 'Single');
+      lanes.forEach(l => {
+        const ps = j.pours.filter(p => p.lane === l);
+        if (!ps.length) return;
+        rows.push(`<tr class="g-grp"><td colspan="9"><b>${j.name}</b> · ${esc(LANE[l])} <span class="muted">· ${ps.filter(p => isDone(p.a)).length}/${ps.length} complete</span></td></tr>`);
+        ps.forEach(p => {
+          const a = p.a, fv = finVar(a), lateStart = !a.as && a.s !== null && a.bs !== null ? Math.round((a.s - a.bs) / DAY) : null;
+          const cls = isDone(a) ? 'done' : critical(a) ? 'crit' : isActive(a) ? 'act' : 'ns';
+          rows.push(`<tr class="click" data-act="${esc(a.c)}"><td><b>${esc(p.span)}</b> <span class="muted small">${esc(p.unit)}</span><div class="muted small">${esc(a.c)}</div></td>
+            <td><b>${fd(a.bs)}</b> → ${fd(a.bf)}</td><td>${a.as ? '<b>' + fd(a.as) + '</b> <span class="muted small">actual</span>' : fd(a.s) + (lateStart > 0 ? ` <span class="neg small">+${lateStart}d</span>` : '')}</td><td>${a.af ? '<b>' + fd(a.af) + '</b>' : fd(a.f)}</td>
+            <td class="n">${Math.round(a.p)}%</td><td class="n ${fv > 0 ? 'neg' : fv < 0 ? 'pos' : ''}">${fv === null ? '—' : (fv > 0 ? '+' : '') + fv}</td><td class="n">${a.tf === null || isDone(a) ? '—' : Math.round(a.tf)}</td><td>${stTag(a)}</td>
+            <td class="pt-cell"><div class="pt">${a.bs !== null ? `<i class="pt-bl" style="left:${x(a.bs)};width:calc(${x(a.bf + DAY)} - ${x(a.bs)})"></i>` : ''}${a.s !== null ? `<i class="pt-cur ${cls}" style="left:${x(a.s)};width:calc(${x(a.f + DAY)} - ${x(a.s)})"><em style="width:${a.p}%"></em></i>` : ''}<b class="pt-dd" style="left:${x(X.dd)}"></b></div></td></tr>`);
+        });
+      });
+    });
+    $('#pourBody').innerHTML = `<div class="table-wrap pour-wrap"><table class="tbl"><thead><tr><th>Span / activity</th><th>Planned pour (baseline)</th><th>Start (actual / forecast)</th><th>Finish (forecast)</th><th class="n">%</th><th class="n" title="Finish variance vs baseline, days">Var d</th><th class="n">TF</th><th>Status</th><th class="pt-h">Timeline ${head}</th></tr></thead><tbody>${rows.join('')}</tbody></table></div>
+      <div class="g-legend small" style="margin-top:8px"><i class="lg bl"></i>Baseline pour window <i class="lg act"></i>Forecast / actual <i class="lg crit"></i>Critical <i class="lg dd"></i>Data date</div>`;
+  }
+
   // ---------------- forecast tab ----------------
   function monthsAhead(n) {
     const out = [];
@@ -666,7 +814,7 @@
       msg.push(`✓ Schedule ready: ${S.acts.length.toLocaleString()} activities, weighted by ${S.meta.weighting}${pending.b && pending.u ? '' : ' — import the ' + (pending.b ? 'update' : 'baseline') + ' file too for baseline-vs-update comparison'}`);
       msg.push('To publish for everyone: click "Download schedule.json" and upload it to the repo folder data/.');
       setStatus(msg.join('<br>'));
-      A.render(); renderSchedule(); renderForecast();
+      A.render(); renderSchedule(); renderForecast(); renderJunctions();
     } catch (e) { setStatus('✗ ' + esc(e.message)); }
   }
   function wireImport() {
@@ -695,11 +843,11 @@
     }
     S = s;
     if (S) { index(); setStatus(`Schedule loaded from ${src}: baseline <b>${esc(S.meta.baseline?.file || '—')}</b> · update <b>${esc(S.meta.update?.file || '—')}</b> · data date ${fd(X.dd)}`); }
-    A.render(); renderSchedule(); renderForecast();
+    A.render(); renderSchedule(); renderForecast(); renderJunctions();
   }
 
   wireFilters();
   wireImport();
-  A.onTab = n => { if (n === 'schedule') { renderSchedule(); } if (n === 'forecast') renderForecast(); };
+  A.onTab = n => { if (n === 'schedule') { renderSchedule(); } if (n === 'forecast') renderForecast(); if (n === 'junctions') renderJunctions(); };
   A.whenReady(() => boot());
 })();
