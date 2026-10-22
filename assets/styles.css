@@ -277,3 +277,32 @@ body.fs .gantt { max-height: 80vh; }
 .crumb:hover { text-decoration: underline; }
 tr.g-grp td { background: color-mix(in srgb, var(--brand) 9%, var(--surface)); }
 @media (max-width: 640px) { .drop2 { grid-template-columns: 1fr; } }
+
+/* ---------- weekly report ---------- */
+.hidden { display: none !important; }
+.wk-top { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; justify-content: space-between; }
+.wk-top select { font: inherit; font-size: 14px; font-weight: 600; padding: 7px 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); color: var(--text); min-width: 300px; display: block; margin-top: 3px; }
+.wk-top #wkMeta { flex: 1; min-width: 240px; }
+.grid.inner { margin: 0 0 12px; gap: 14px; }
+.chart-box.sm { height: 170px; margin-top: 10px; }
+.qrow { padding: 10px 0; border-top: 1px solid var(--border); }
+.qrow:first-child { border-top: 0; padding-top: 0; }
+.qrow .qh { display: flex; justify-content: space-between; gap: 10px; margin-bottom: 5px; font-size: 13px; }
+.qrow .pbar span { width: 56px; }
+.pos { color: var(--good); } .neg { color: var(--bad); }
+.wk-list { margin: 0; padding-left: 22px; }
+.wk-list li { padding: 5px 4px; border-bottom: 1px solid var(--border); font-size: 13.5px; }
+.wk-list li:hover { color: var(--brand); }
+.wk-photos { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px; }
+.wk-ph { aspect-ratio: 4 / 3; border-radius: 8px; overflow: hidden; background: var(--surface-2); border: 1px solid var(--border); }
+.wk-ph img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform .2s; }
+.wk-ph:hover img { transform: scale(1.04); }
+.wk-img img { max-width: 100%; border-radius: 8px; border: 1px solid var(--border); display: block; margin: 0 auto; }
+.wk-full { max-width: 100%; max-height: 72vh; display: block; margin: 0 auto 10px; border-radius: 8px; }
+.wk-exec p, .wk-exec li { color: var(--text-2); font-size: 13.5px; }
+.wk-raw { border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; margin-bottom: 8px; }
+.wk-raw summary { cursor: pointer; font-weight: 600; }
+.wk-raw .table-wrap { margin-top: 8px; }
+.tbl tr.tot td { font-weight: 700; background: var(--surface-2); }
+.dtile.click:hover { border-color: var(--brand); }
+@media (max-width: 640px) { .wk-top select { min-width: 0; width: 100%; } }

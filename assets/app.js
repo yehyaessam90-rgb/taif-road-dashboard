@@ -264,7 +264,8 @@
     };
     const pvNow = planAt(dataDate);
     const sp = SC && SC.perfPoint();
-    const perf = [...m.performance, ...(sp && !m.performance.some(x => x.date.slice(0, 7) === sp.date.slice(0, 7)) ? [sp] : [])].sort((a, b) => a.date.localeCompare(b.date));
+    const wp = window.WEEKLY ? window.WEEKLY.perfPoints() : [];
+    const perf = [...m.performance, ...wp, ...(sp && !m.performance.some(x => x.date.slice(0, 7) === sp.date.slice(0, 7)) ? [sp] : [])].sort((a, b) => a.date.localeCompare(b.date));
     const lastPerf = perf[perf.length - 1];
 
     const timePct = start && finish ? Math.max(0, Math.min(100, (dataDate - start) / (finish - start) * 100)) : null;
@@ -472,7 +473,8 @@
         plugins: { ...baseOpts().plugins, tooltip: { ...baseOpts().plugins.tooltip, callbacks: { label: c => `${c.dataset.label}: ${c.parsed.y.toFixed(2)}` } } }
       })
     });
-    if (!spiIdx.length) $('#chSpi').parentElement.insertAdjacentHTML('beforeend', '<div class="donut-center muted">Load the baseline to compute SPI</div>');
+    $$('#chSpi ~ .spi-empty').forEach(el => el.remove());
+    if (!spiIdx.length) $('#chSpi').parentElement.insertAdjacentHTML('beforeend', '<div class="donut-center muted spi-empty">Load the baseline to compute SPI</div>');
 
     renderSections(m, D);
 

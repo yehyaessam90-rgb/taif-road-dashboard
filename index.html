@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Cairo:wght@400;600;700&display=swap" rel="stylesheet">
 <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="assets/styles.css?v=202610211830">
+<link rel="stylesheet" href="assets/styles.css?v=202610220552">
 <script>
   window.addEventListener('error', function (e) {
     var b = document.getElementById('jsErr');
@@ -16,8 +16,8 @@
     b.innerHTML = '⚠ The page did not load completely (' + (e.message || 'script error') + '). Press <b>Ctrl + F5</b> to reload the latest version.';
   });
 </script>
-<script src="assets/vendor/chart.umd.min.js?v=202610211830"></script>
-<script src="assets/vendor/xlsx.full.min.js?v=202610211830"></script>
+<script src="assets/vendor/chart.umd.min.js?v=202610220552"></script>
+<script src="assets/vendor/xlsx.full.min.js?v=202610220552"></script>
 </head>
 <body>
 <header class="topbar">
@@ -47,6 +47,7 @@
   <button class="tab" data-tab="spending">Spending Plan</button>
   <button class="tab" data-tab="schedule">Schedule &amp; Gantt</button>
   <button class="tab" data-tab="forecast">Forecast</button>
+  <button class="tab" data-tab="weekly">Weekly Report</button>
   <button class="tab" data-tab="quantities">Quantities (BOQ)</button>
   <button class="tab" data-tab="invoices">Invoices (IPC)</button>
   <button class="tab import" data-tab="import">⇪ Import File</button>
@@ -172,6 +173,17 @@
     </template>
   </section>
 
+  <!-- WEEKLY REPORT -->
+  <section class="panel" id="tab-weekly">
+    <div class="wk-top card">
+      <div><label class="muted small" for="wkSel">Weekly report</label><select id="wkSel"></select></div>
+      <div class="muted small" id="wkMeta"></div>
+      <button class="btn ghost" onclick="APP.showTab('import')">⇪ Import new report</button>
+    </div>
+    <div class="kpis" id="wkKpis"></div>
+    <div id="wkBody"></div>
+  </section>
+
   <!-- QUANTITIES -->
   <section class="panel" id="tab-quantities">
     <div class="kpis" id="qtyKpis"></div>
@@ -241,6 +253,17 @@
       </div>
     </div>
     <div class="card">
+      <div class="card-h"><h3>3 · Contractor weekly report (.docx)</h3></div>
+      <p>Drop the weekly progress report as received (Word <b>.docx</b>). Progress, HSE, manpower, equipment, quantities, works completed / planned, engineering, permits, quality, issues, risks and photos are read automatically. Each week is added to the history.</p>
+      <label class="drop" id="dropWk"><input type="file" id="fileWk" accept=".docx"><span class="drop-ic">🗎</span><span><b>Drop the weekly report here</b> or click to browse</span><span class="muted small">e.g. Contractors_Weekly_Report_No.49_Oct_10_to_Oct_16_2026.docx</span></label>
+      <div id="wkStatus" class="muted small xer-status">No weekly report loaded.</div>
+      <div class="row-btns">
+        <button class="btn" id="wkExport">⬇ Download weekly.json</button>
+        <button class="btn ghost" id="wkDelete">Remove selected report</button>
+        <button class="btn danger" id="wkClear">↺ Clear local reports</button>
+      </div>
+    </div>
+    <div class="card">
       <div class="card-h"><h3>Import log</h3></div>
       <pre id="importLog" class="log">No file imported in this session.</pre>
     </div>
@@ -252,6 +275,7 @@
         <li>On GitHub open the repo → folder <code>data/</code> → <b>Add file › Upload files</b> → drop it → <b>Commit</b>.</li>
         <li>GitHub Pages republishes in ~1 minute — every viewer now sees the new data.</li>
         <li>Schedule: after importing the .xer files click <b>Download schedule.json</b> and upload it to <code>data/</code> the same way.</li>
+        <li>Weekly report: after importing the .docx click <b>Download weekly.json</b> and upload it to <code>data/</code> (it holds every week imported so far).</li>
       </ol>
     </div>
   </section>
@@ -263,9 +287,10 @@
 </footer>
 
 <div id="tooltipHost"></div>
-<script src="data/default-data.js?v=202610211830"></script>
-<script src="assets/xer.js?v=202610211830"></script>
-<script src="assets/app.js?v=202610211830"></script>
-<script src="assets/schedule.js?v=202610211830"></script>
+<script src="data/default-data.js?v=202610220552"></script>
+<script src="assets/xer.js?v=202610220552"></script>
+<script src="assets/app.js?v=202610220552"></script>
+<script src="assets/schedule.js?v=202610220552"></script>
+<script src="assets/weekly.js?v=202610220552"></script>
 </body>
 </html>

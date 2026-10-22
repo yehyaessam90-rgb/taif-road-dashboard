@@ -26,3 +26,8 @@ Settings → Pages → *Deploy from a branch* → `main` / root → Save. The si
 - **Schedule & Gantt** tab: look-ahead (1–12 weeks), achieved (last week / month / custom), delayed, critical, milestones; WBS, status, float and text filters; Gantt with baseline bars and data-date line; CSV export.
 - **Forecast** tab: baseline vs update vs certified cumulative cost, monthly forecast for coming months, performance % forecast and the activities required each month by WBS.
 - Weekly update: Import File → drop the baseline and the update `.xer` → **Download schedule.json** → upload it to `data/` (replace the old one).
+
+## Weekly report
+- **Weekly Report** tab: progress by area, major quantities, losses, works completed / planned, manpower & equipment, HSE, quality, engineering, permits, procurement, issues, risks, photos and trends across weeks. Every number, row, bar and photo opens its details.
+- Each week: Import File → drop the contractor's weekly report `.docx` → **Download weekly.json** → upload it to `data/` (it holds every week imported so far; photos are kept for the latest 2 weeks).
+- Phone numbers and named contact persons are removed before anything is stored.
