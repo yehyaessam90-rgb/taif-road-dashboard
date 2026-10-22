@@ -7,8 +7,12 @@
 <meta name="description" content="Project performance and spending-plan dashboard — Development of Taif Road, Section C">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Cairo:wght@400;600;700&display=swap" rel="stylesheet">
+<script>
+  /* admin mode: the Import tab is shown only after opening the site once with ?admin=<key> */
+  try { if (localStorage.getItem('trd_admin') === 'bb132136cba17058787561571dffaa8bfe3d15bac2e1d651b5f0fb7f76dfd34b') document.documentElement.classList.add('admin'); } catch (e) { }
+</script>
 <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="assets/styles.css?v=202610220552">
+<link rel="stylesheet" href="assets/styles.css?v=202610220608">
 <script>
   window.addEventListener('error', function (e) {
     var b = document.getElementById('jsErr');
@@ -16,8 +20,8 @@
     b.innerHTML = '⚠ The page did not load completely (' + (e.message || 'script error') + '). Press <b>Ctrl + F5</b> to reload the latest version.';
   });
 </script>
-<script src="assets/vendor/chart.umd.min.js?v=202610220552"></script>
-<script src="assets/vendor/xlsx.full.min.js?v=202610220552"></script>
+<script src="assets/vendor/chart.umd.min.js?v=202610220608"></script>
+<script src="assets/vendor/xlsx.full.min.js?v=202610220608"></script>
 </head>
 <body>
 <header class="topbar">
@@ -32,7 +36,7 @@
   </div>
   <div class="actions">
     <span class="pill click" id="dataDatePill" data-kpi="time" title="Click for details">Data date —</span>
-    <span class="pill src click" id="sourcePill" title="Data source — click to open Import">Source —</span>
+    <span class="pill src click" id="sourcePill" title="Data source">Source —</span>
     <button class="btn" id="themeBtn" title="Toggle light / dark"><svg viewBox="0 0 24 24" width="16" height="16"><circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 4a8 8 0 0 1 0 16z" fill="currentColor"/></svg></button>
     <button class="btn" id="fsBtn" title="Full screen">
       <svg viewBox="0 0 24 24" width="16" height="16"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
@@ -50,7 +54,7 @@
   <button class="tab" data-tab="weekly">Weekly Report</button>
   <button class="tab" data-tab="quantities">Quantities (BOQ)</button>
   <button class="tab" data-tab="invoices">Invoices (IPC)</button>
-  <button class="tab import" data-tab="import">⇪ Import File</button>
+  <button class="tab import admin-only" data-tab="import">⇪ Import File</button>
 </nav>
 
 <div id="banner" class="banner hidden"></div>
@@ -178,7 +182,7 @@
     <div class="wk-top card">
       <div><label class="muted small" for="wkSel">Weekly report</label><select id="wkSel"></select></div>
       <div class="muted small" id="wkMeta"></div>
-      <button class="btn ghost" onclick="APP.showTab('import')">⇪ Import new report</button>
+      <button class="btn ghost admin-only" onclick="APP.showTab('import')">⇪ Import new report</button>
     </div>
     <div class="kpis" id="wkKpis"></div>
     <div id="wkBody"></div>
@@ -220,7 +224,8 @@
   </section>
 
   <!-- IMPORT -->
-  <section class="panel" id="tab-import">
+  <section class="panel admin-only" id="tab-import">
+    <div class="card admin-bar"><span>🔒 <b>Admin mode</b> — this tab is visible only on browsers opened with your private admin link.</span><button class="btn ghost" id="adminExit">Exit admin mode</button></div>
     <div class="grid g-1-1">
       <div class="card">
         <div class="card-h"><h3>1 · Update from Excel</h3></div>
@@ -287,10 +292,10 @@
 </footer>
 
 <div id="tooltipHost"></div>
-<script src="data/default-data.js?v=202610220552"></script>
-<script src="assets/xer.js?v=202610220552"></script>
-<script src="assets/app.js?v=202610220552"></script>
-<script src="assets/schedule.js?v=202610220552"></script>
-<script src="assets/weekly.js?v=202610220552"></script>
+<script src="data/default-data.js?v=202610220608"></script>
+<script src="assets/xer.js?v=202610220608"></script>
+<script src="assets/app.js?v=202610220608"></script>
+<script src="assets/schedule.js?v=202610220608"></script>
+<script src="assets/weekly.js?v=202610220608"></script>
 </body>
 </html>

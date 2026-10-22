@@ -437,7 +437,7 @@
     if (!WEEKS.length) {
       sel.innerHTML = '';
       $('#wkKpis').innerHTML = '';
-      host.innerHTML = `<div class="card empty"><h3>No weekly report imported yet</h3><p>Go to <b>Import File</b> and drop the contractor’s weekly report (<code>.docx</code>). Every week adds a new report; trends build up automatically.</p><button class="btn" onclick="APP.showTab('import')">Open Import</button></div>`;
+      host.innerHTML = `<div class="card empty"><h3>No weekly report published yet</h3><p class="admin-only">Go to <b>Import File</b> and drop the contractor’s weekly report (<code>.docx</code>). Every week adds a new report; trends build up automatically.</p><button class="btn admin-only" onclick="APP.showTab('import')">Open Import</button></div>`;
       return;
     }
     if (!SEL || !WEEKS.some(w => key(w) === SEL)) SEL = key(WEEKS[WEEKS.length - 1]);

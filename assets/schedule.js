@@ -240,7 +240,7 @@
   function renderSchedule() {
     const host = $('#schedBody');
     if (!S) {
-      host.innerHTML = `<div class="card empty"><h3>No P6 schedule loaded</h3><p>Go to <b>Import File</b> and drop the baseline <code>.xer</code> and the latest weekly update <code>.xer</code>. Look-ahead, achieved activities, the Gantt chart and the cost/performance forecast are built from them.</p><button class="btn" onclick="APP.showTab('import')">Open Import</button></div>`;
+      host.innerHTML = `<div class="card empty"><h3>No P6 schedule loaded</h3><p class="viewer-only">The schedule has not been published yet.</p><p class="admin-only">Go to <b>Import File</b> and drop the baseline <code>.xer</code> and the latest weekly update <code>.xer</code>. Look-ahead, achieved activities, the Gantt chart and the cost/performance forecast are built from them.</p><button class="btn admin-only" onclick="APP.showTab('import')">Open Import</button></div>`;
       $('#schedKpis').innerHTML = '';
       return;
     }
@@ -509,7 +509,7 @@
 
   function renderForecast() {
     const host = $('#fcBody');
-    if (!S) { host.innerHTML = `<div class="card empty"><h3>No P6 schedule loaded</h3><p>Import the baseline and update <code>.xer</code> files to forecast cost and performance for the coming months.</p><button class="btn" onclick="APP.showTab('import')">Open Import</button></div>`; $('#fcKpis').innerHTML = ''; return; }
+    if (!S) { host.innerHTML = `<div class="card empty"><h3>No P6 schedule loaded</h3><p class="viewer-only">The schedule has not been published yet.</p><p class="admin-only">Import the baseline and update <code>.xer</code> files to forecast cost and performance for the coming months.</p><button class="btn admin-only" onclick="APP.showTab('import')">Open Import</button></div>`; $('#fcKpis').innerHTML = ''; return; }
     host.innerHTML = $('#fcTpl').innerHTML;
     const D = A.derive(A.M);
     const n = +($('#fcN')?.value || F.fcN || 6);

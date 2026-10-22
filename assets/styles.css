@@ -306,3 +306,8 @@ tr.g-grp td { background: color-mix(in srgb, var(--brand) 9%, var(--surface)); }
 .tbl tr.tot td { font-weight: 700; background: var(--surface-2); }
 .dtile.click:hover { border-color: var(--brand); }
 @media (max-width: 640px) { .wk-top select { min-width: 0; width: 100%; } }
+
+/* ---------- admin-only UI ---------- */
+html:not(.admin) .admin-only { display: none !important; }
+html.admin .viewer-only { display: none !important; }
+.admin-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; background: color-mix(in srgb, var(--brand) 8%, var(--surface)); border-color: color-mix(in srgb, var(--brand) 35%, var(--border)); }

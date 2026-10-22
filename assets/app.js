@@ -572,7 +572,7 @@
     const banner = $('#banner');
     const msgs = [];
     if (SOURCE.startsWith('Imported')) msgs.push(`Showing <b>your imported file</b> (stored only in this browser). <button class="btn" id="bReset">Back to published data</button>`);
-    if (!hasPlan) msgs.push('Baseline plan not loaded — planned curves, SPI and the spending plan appear after you import the P6 baseline (.xer) or fill <b>Baseline_Plan</b> in the Excel file. <button class="btn" id="bImport">Open Import</button>');
+    if (!hasPlan) msgs.push('Baseline plan not loaded — planned curves, SPI and the spending plan appear after you import the P6 baseline (.xer) or fill <b>Baseline_Plan</b> in the Excel file. <button class="btn admin-only" id="bImport">Open Import</button>');
     banner.innerHTML = msgs.join('<br>');
     banner.classList.toggle('hidden', !msgs.length);
     $('#bReset') && ($('#bReset').onclick = resetData);
@@ -879,7 +879,7 @@
   })();
 
   document.addEventListener('click', e => {
-    if (e.target.closest('#sourcePill')) { showTab('import'); return; }
+    if (e.target.closest('#sourcePill')) { if (isAdmin()) showTab('import'); return; }
     if (e.target.closest('th, input, select, label, a, .modal-h')) return;
     const t = e.target.closest('[data-ipc],[data-sec],[data-item],[data-month],[data-kpi],.kpi[data-k]');
     if (!t) {
@@ -898,7 +898,20 @@
   document.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.classList?.contains('kpi')) e.target.click(); });
 
   // ---------- tabs / fullscreen / theme ----------
+  const ADMIN_HASH = 'bb132136cba17058787561571dffaa8bfe3d15bac2e1d651b5f0fb7f76dfd34b';
+  const isAdmin = () => document.documentElement.classList.contains('admin');
+  async function checkAdminLink() {
+    const q = new URLSearchParams(location.search).get('admin');
+    if (q === null) return;
+    if (q === 'off') { try { localStorage.removeItem('trd_admin'); } catch (e) { } document.documentElement.classList.remove('admin'); }
+    else if (window.crypto && crypto.subtle) {
+      const h = [...new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(q)))].map(b => b.toString(16).padStart(2, '0')).join('');
+      if (h === ADMIN_HASH) { try { localStorage.setItem('trd_admin', h); } catch (e) { } document.documentElement.classList.add('admin'); }
+    }
+    history.replaceState(null, '', location.pathname + location.hash);   // keep the key out of the address bar
+  }
   function showTab(name) {
+    if (name === 'import' && !isAdmin()) name = 'overview';
     $$('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
     $$('.panel').forEach(p => p.classList.toggle('active', p.id === 'tab-' + name));
     Object.values(charts).forEach(c => c.resize());
@@ -988,6 +1001,7 @@
     ready.splice(0).forEach(fn => fn());
   }
   try { const th = localStorage.getItem('trd_theme'); if (th) document.documentElement.dataset.theme = th; } catch (e) { }
-  try { const tb = localStorage.getItem('trd_tab'); if (tb && $('#tab-' + tb)) showTab(tb); } catch (e) { }
+  $('#adminExit').onclick = () => { try { localStorage.removeItem('trd_admin'); } catch (e) { } document.documentElement.classList.remove('admin'); showTab('overview'); };
+  checkAdminLink().then(() => { try { const tb = localStorage.getItem('trd_tab'); if (tb && $('#tab-' + tb)) showTab(tb); } catch (e) { } });
   boot();
 })();
