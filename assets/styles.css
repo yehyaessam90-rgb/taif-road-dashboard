@@ -359,3 +359,27 @@ html.admin .viewer-only { display: none !important; }
 .pt-axis { position: relative; height: 14px; margin-top: 4px; font-weight: 500; text-transform: none; letter-spacing: 0; }
 .pt-axis span { position: absolute; font-size: 10px; color: var(--muted); border-left: 1px solid var(--border); padding-left: 2px; white-space: nowrap; }
 .pt-axis .pt-dd { top: 0; bottom: 0; }
+
+/* ---------- programmes / compare / slides ---------- */
+.prog-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; }
+.prog-bar .seg button:disabled { opacity: .45; cursor: not-allowed; }
+.p6strip .p6h .p6t b { color: var(--brand); }
+.cmp-head { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+.cmp-head .card { margin: 0; }
+.cmp-card:hover { border-color: var(--brand); }
+.cmp-t { font-size: 17px; font-weight: 700; margin-bottom: 4px; }
+.cmp-big { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin: 12px 0 8px; }
+.cmp-big > div { display: flex; flex-direction: column; gap: 2px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; }
+.cmp-big span { font-size: 11px; color: var(--text-2); font-weight: 600; text-transform: uppercase; }
+.cmp-big b { font-size: 18px; }
+.cmp-big em { font-style: normal; }
+.jlist { display: flex; flex-direction: column; gap: 16px; margin-bottom: 16px; }
+.jline { display: grid; grid-template-columns: minmax(280px, 1fr) 2.2fr; gap: 16px; align-items: stretch; }
+.jline .card { margin: 0; }
+.jslide { margin: 0; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 10px; box-shadow: var(--shadow); display: flex; flex-direction: column; gap: 6px; }
+.jslide img { width: 100%; height: auto; border-radius: 6px; display: block; }
+.jslide figcaption { font-size: 12.5px; font-weight: 600; }
+.jslide.empty { align-items: center; justify-content: center; min-height: 160px; }
+.jslide.wide { box-shadow: none; border: 0; padding: 0; }
+.jslide:hover { border-color: var(--brand); }
+@media (max-width: 1000px) { .jline, .cmp-head { grid-template-columns: 1fr; } .cmp-big { grid-template-columns: 1fr 1fr; } }

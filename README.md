@@ -31,3 +31,9 @@ Settings → Pages → *Deploy from a branch* → `main` / root → Save. The si
 - **Weekly Report** tab: progress by area, major quantities, losses, works completed / planned, manpower & equipment, HSE, quality, engineering, permits, procurement, issues, risks, photos and trends across weeks. Every number, row, bar and photo opens its details.
 - Each week: Import File → drop the contractor's weekly report `.docx` → **Download weekly.json** → upload it to `data/` (it holds every week imported so far; photos are kept for the latest 2 weeks).
 - Phone numbers and named contact persons are removed before anything is stored.
+
+## Two P6 programmes
+- `data/schedule-dbl.json` = **Detailed Baseline Rev.04** (contract baseline) + its latest update; `data/schedule.json` = **Target Plan** + its latest update.
+- A programme switch sits on the Schedule, Junctions and Forecast pages (default: Detailed Baseline); the Overview strip follows it.
+- **Compare Programmes** tab: summary, curves, delay distribution, monthly forecast, junctions, WBS levels 1–2 and activity-by-activity differences (CSV export).
+- Junctions presentation: `data/slides.json` (slide images per junction). Update via Import → "Junctions presentation" with the slides exported as JPEG.

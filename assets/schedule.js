@@ -183,7 +183,7 @@
     planMonthly: () => S ? Object.keys(X.pv).sort().map(k => ({ month: k + '-01', planned: X.pv[k] * X.k })) : [],
     perfPoint: () => S && S.meta.update ? { date: ds(X.dd), planned: +X.planPct.toFixed(2), actual: +X.actPct.toFixed(2), remarks: 'From P6 update ' + (S.meta.update.file || '') } : null,
     start: () => S ? ds(X.bStart) : '', finish: () => S ? ds(X.bFinish) : '',
-    status: () => S ? { dataDate: ds(X.dd), planPct: X.planPct, actPct: X.actPct, spi: X.pvdd ? X.ev / X.pvdd : null, fFinish: ds(X.fFinish), bFinish: ds(X.bFinish), update: S.meta.update ? S.meta.update.file : '' } : null
+    status: () => S ? { prog: prog(ACTIVE) ? prog(ACTIVE).name : '', dataDate: ds(X.dd), planPct: X.planPct, actPct: X.actPct, spi: X.pvdd ? X.ev / X.pvdd : null, fFinish: ds(X.fFinish), bFinish: ds(X.bFinish), update: S.meta.update ? S.meta.update.file : '' } : null
   };
 
   // ---------------- status helpers ----------------
@@ -529,7 +529,9 @@
       const st = j.st, slip = st.finish && st.bFinish ? Math.round((st.finish - st.bFinish) / DAY) : null;
       const pours = j.pours, started = pours.filter(p => p.a.as).length, doneP = pours.filter(p => isDone(p.a)).length;
       const next = pours.filter(p => !p.a.as && p.a.s !== null).sort((x, y) => x.a.s - y.a.s)[0];
-      return `<div class="card jcard click" data-wbs-open="${esc(j.root.id)}">
+      const sl = window.JSLIDES.get(j.key)[0];
+      const slide = sl ? `<figure class="jslide click" data-slide="${esc(j.key)}"><img src="${sl.src}" alt="${esc(j.name)} presentation slide" loading="lazy"><figcaption>${esc(sl.title || j.name)}${sl.date ? ' · status ' + esc(sl.date) : ''} <span class="muted">· click to enlarge</span></figcaption></figure>` : `<div class="jslide empty muted">No presentation slide for ${j.name} yet</div>`;
+      return `<div class="jline"><div class="card jcard click" data-wbs-open="${esc(j.root.id)}">
         <div class="jh"><div><h3>${j.name}</h3><div class="muted small">Ch ${esc(j.ch)}${j.jeddah ? ' · Jeddah Junction' : ''} · ${st.n} activities</div></div>${spiTag(st.spi)}</div>
         <div class="jbig"><b>${fmtP(st.act, 1)}</b><span class="muted">actual · planned ${fmtP(st.plan, 1)}</span></div>
         ${pctCell(st.act, st.plan)}
@@ -539,7 +541,7 @@
           <div><span>Forecast finish</span><b class="${slip > 0 ? 'neg' : ''}">${fd(st.finish)}${slip ? ` (${slip > 0 ? '+' : ''}${slip} d)` : ''}</b></div>
           <div><span>Deck slab pours</span><b>${doneP} done · ${started} started / ${pours.length}</b></div>
           <div><span>Next deck pour</span><b>${next ? fd(next.a.s) + ' · ' + esc(LANE[next.lane]) : started === pours.length ? 'All started' : '—'}</b></div>
-        </div></div>`;
+        </div></div>${slide}</div>`;
     }).join('');
 
     const compTables = J.map(j => {
@@ -552,7 +554,13 @@
         }).join('') + '</tbody></table></div></details>';
     }).join('');
 
-    host.innerHTML = `<div class="jgrid">${cards}</div>
+    const ov = window.JSLIDES.get('overview')[0], sm = window.JSLIDES.meta();
+    const ovBlock = !ov ? '' : ov.chart
+      ? `<div class="card"><div class="card-h"><h3>Junctions presentation — overview</h3><span class="muted">${esc(sm.file || '')}${ov.date ? ' · status ' + esc(ov.date) : ''}</span></div>
+          <div class="grid g-1-1 inner"><div>${(ov.kpis || []).length ? `<div class="dtiles">${ov.kpis.map(k => `<div class="dtile"><div class="lbl">${esc(k[0])}</div><div class="v">${esc(k[1])}</div></div>`).join('')}</div>` : ''}<div class="chart-box"><canvas id="chSlideOv"></canvas></div><p class="muted small">Chart redrawn from the presentation data (plan vs actual per junction).</p></div>
+          <figure class="jslide wide click" data-slide="overview"><img src="${ov.src}" alt="Junctions overview slide"><figcaption class="muted small">Overview slide — click to enlarge</figcaption></figure></div></div>`
+      : `<div class="card"><div class="card-h"><h3>Junctions presentation — overview</h3><span class="muted">${esc(sm.file || '')}${ov.date ? ' · status ' + esc(ov.date) : ''}</span></div><figure class="jslide wide click" data-slide="overview"><img src="${ov.src}" alt="Junctions overview slide"></figure></div>`;
+    host.innerHTML = `<div class="prog-bar"></div>` + ovBlock + `<div class="jlist">${cards}</div>
       <div class="grid g-1-1"><div class="card"><div class="card-h"><h3>Planned vs actual by junction</h3><span class="muted">Weighted by cost · data date ${fd(dd)}</span></div><div class="chart-box"><canvas id="chJunc"></canvas></div></div>
       <div class="card"><div class="card-h"><h3>Deck slab concrete — status</h3></div><div class="chart-box"><canvas id="chJPour"></canvas></div></div></div>
       <div class="card"><div class="card-h"><h3>Progress by component</h3><span class="muted">Click any row for its activities</span></div>${compTables}</div>
@@ -562,6 +570,7 @@
         <div id="pourBody"></div>
         <p class="muted small">Pour window = the P6 "Deck Slab … Concrete" activity of each span. Baseline = ${esc(S.meta.baseline?.file || '—')}; forecast / actual = ${esc(S.meta.update?.file || '—')} (data date ${fd(dd)}).</p></div>`;
     drawPours();
+    renderProgBars();
     $$('#jfJ button').forEach(b => b.onclick = e => { e.stopPropagation(); JF.j = b.dataset.j; drawPours(); });
     $$('#jfL button').forEach(b => b.onclick = e => { e.stopPropagation(); JF.lane = b.dataset.l; drawPours(); });
 
@@ -573,6 +582,12 @@
       cfg.options.onHover = (e, els) => { e.native.target.style.cursor = els.length ? 'pointer' : 'default'; };
       charts[id] = new Chart($('#' + id), cfg);
     };
+    if (ov && ov.chart && $('#chSlideOv')) {
+      if (charts.chSlideOv) charts.chSlideOv.destroy();
+      const pal = [col('--s2'), col('--s1')];
+      charts.chSlideOv = new Chart($('#chSlideOv'), { type: 'bar', data: { labels: ov.chart.cats, datasets: ov.chart.series.map((se, i) => ({ label: se.name, data: se.values.slice(0, ov.chart.cats.length), backgroundColor: pal[i % 2], borderRadius: 4, maxBarThickness: 34 })) },
+        options: base({ scales: { x: base().scales.x, y: { ...base().scales.y, ticks: { color: col('--text-2'), callback: v => v + '%' } } }, plugins: { ...base().plugins, tooltip: { ...base().plugins.tooltip, callbacks: { label: c => `${c.dataset.label}: ${c.parsed.y}%` } } } }) });
+    }
     mk('chJunc', { type: 'bar', data: { labels: J.map(j => j.name), datasets: [
       { label: 'Planned %', data: J.map(j => +j.st.plan.toFixed(2)), backgroundColor: col('--s2'), borderRadius: 4, maxBarThickness: 34 },
       { label: 'Actual %', data: J.map(j => +j.st.act.toFixed(2)), backgroundColor: col('--s1'), borderRadius: 4, maxBarThickness: 34 }] },
@@ -584,6 +599,13 @@
       options: base({ scales: { x: { ...base().scales.x, stacked: true }, y: { ...base().scales.y, stacked: true, ticks: { color: col('--text-2'), precision: 0 } } } })
     }, i => { JF.j = J[i].key; drawPours(); $('#pourCard').scrollIntoView({ behavior: 'smooth' }); });
   }
+  document.addEventListener('click', e => {
+    const f = e.target.closest('[data-slide]');
+    if (!f) return;
+    e.stopPropagation();
+    const sl = window.JSLIDES.get(f.dataset.slide)[0];
+    if (sl) A.Details.open(() => ({ title: esc(sl.title || f.dataset.slide), sub: (window.JSLIDES.meta().file || '') + (sl.date ? ' · status ' + sl.date : ''), body: `<img class="wk-full" src="${sl.src}" alt="">` }));
+  }, true);
   function drawPours() {
     const J = junctions().filter(j => !JF.j || j.key === JF.j);
     $$('#jfJ button').forEach(b => b.classList.toggle('on', b.dataset.j === JF.j));
@@ -796,25 +818,298 @@
 
   function showTab(n) { A.showTab(n); }
 
+  // ---------------- programmes ----------------
+  // each programme = a baseline + its latest update; published as its own JSON file
+  const PROGRAMS = [
+    { id: 'dbl', name: 'Detailed Baseline Rev.04', short: 'Detailed Baseline', file: 'data/schedule-dbl.json', out: 'schedule-dbl.json' },
+    { id: 'tp', name: 'Target Plan', short: 'Target Plan', file: 'data/schedule.json', out: 'schedule.json' }
+  ];
+  const PS = {};          // id → { S, X, src }
+  let ACTIVE = (() => { try { return localStorage.getItem('trd_prog') || 'dbl'; } catch (e) { return 'dbl'; } })();
+  const prog = id => PROGRAMS.find(p => p.id === id);
+  function activate(id) {
+    if (!PS[id]) id = PROGRAMS.map(p => p.id).find(k => PS[k]) || id;
+    ACTIVE = id;
+    try { localStorage.setItem('trd_prog', id); } catch (e) { }
+    S = PS[id] ? PS[id].S : null; X = PS[id] ? PS[id].X : null;
+    F.wbs = ''; const g = $('#gWbs'); if (g) g.dataset.ready = '';
+  }
+  // run fn with another programme temporarily active (used by the comparison page)
+  function withProg(id, fn) {
+    const s0 = S, x0 = X;
+    S = PS[id].S; X = PS[id].X;
+    try { return fn(); } finally { S = s0; X = x0; }
+  }
+  function renderProgBars() {
+    const html = `<span class="muted small">Programme</span><div class="seg">${PROGRAMS.map(p => `<button data-prog="${p.id}" class="${p.id === ACTIVE ? 'on' : ''}" ${PS[p.id] ? '' : 'disabled title="Not published yet"'}>${esc(p.short)}</button>`).join('')}</div>` +
+      (S ? `<span class="muted small">Baseline <b>${esc(S.meta.baseline?.file || '—')}</b> · update <b>${esc(S.meta.update?.file || '—')}</b> · cut-off <b>${fd(X.dd)}</b></span>` : '');
+    $$('.prog-bar').forEach(el => { el.innerHTML = html; });
+  }
+  function renderAll() { renderProgBars(); A.render(); renderSchedule(); renderForecast(); renderJunctions(); renderCompare(); }
+  document.addEventListener('click', e => {
+    const b = e.target.closest('[data-prog]');
+    if (!b || b.disabled) return;
+    activate(b.dataset.prog);
+    renderAll();
+  });
+
+  // ---------------- comparison of the two programmes ----------------
+  const CF = { show: 'diff', thr: 7, q: '', l1: '' };
+  function progSummary(id) {
+    return withProg(id, () => {
+      const all = S.acts;
+      const inc = all.filter(a => !isDone(a));
+      const fvs = inc.map(finVar).filter(v => v !== null);
+      return {
+        id, p: prog(id), dd: X.dd, bStart: X.bStart, bFinish: X.bFinish, fFinish: X.fFinish, slip: Math.round((X.fFinish - X.bFinish) / DAY),
+        planPct: X.planPct, actPct: X.actPct, spi: X.pvdd ? X.ev / X.pvdd : null, n: all.length,
+        done: all.filter(isDone).length, active: all.filter(isActive).length, ns: all.filter(a => a.st === 'NotStart').length,
+        crit: all.filter(critical).length, neg: inc.filter(a => a.tf !== null && a.tf < 0).length,
+        late: inc.filter(a => (finVar(a) || 0) > 0).length,
+        buckets: [[-Infinity, 0], [1, 30], [31, 90], [91, 180], [181, Infinity]].map(([lo, hi]) => fvs.filter(v => v >= lo && v <= hi).length),
+        bac: S.meta.bac * X.k, ev: X.ev * X.k, pv: X.pvdd * X.k, files: S.meta
+      };
+    });
+  }
+  const pathKey = (id, depth) => X.wbsPath(id).slice(0, depth + 1).map(w => norm(w.name)).join(' / ');
+  const norm = s => String(s || '').toLowerCase().replace(/\s+/g, ' ').trim();
+  function wbsCompare(depth) {
+    const res = {};
+    PROGRAMS.forEach(p => withProg(p.id, () => {
+      S.wbs.filter(w => w.depth <= depth).forEach(w => {
+        const k = pathKey(w.id, w.depth);
+        const st = wStats(wbsSet(w.id));
+        if (!st.wt && !st.n) return;
+        (res[k] = res[k] || { name: w.name, depth: w.depth, code: w.code, ids: {} })[p.id] = st;
+        res[k].ids[p.id] = w.id;
+      });
+    }));
+    return Object.values(res);
+  }
+  function actPairs() {
+    const A_ = PS.dbl.S.acts, B_ = PS.tp.S.acts;
+    const mb = {}; B_.forEach(a => { mb[a.c] = a; });
+    const ma = {}; A_.forEach(a => { ma[a.c] = a; });
+    const pairs = A_.filter(a => mb[a.c]).map(a => ({ c: a.c, a, b: mb[a.c] }));
+    return { pairs, onlyA: A_.filter(a => !mb[a.c]), onlyB: B_.filter(b => !ma[b.c]) };
+  }
+  const dd_ = (x, y) => x !== null && y !== null ? Math.round((y - x) / DAY) : null;
+  const dTag = v => v === null ? '—' : `<span class="${v > 0 ? 'neg' : v < 0 ? 'pos' : ''}">${v > 0 ? '+' : ''}${v}</span>`;
+
+  function renderCompare() {
+    const host = $('#cmpBody');
+    if (!host) return;
+    if (!PS.dbl || !PS.tp) {
+      host.innerHTML = `<div class="card empty"><h3>Both programmes are needed for the comparison</h3><p>Published: ${PROGRAMS.map(p => `${esc(p.name)} ${PS[p.id] ? '✓' : '✗'}`).join(' · ')}</p><button class="btn admin-only" onclick="APP.showTab('import')">Open Import</button></div>`;
+      return;
+    }
+    const sa = progSummary('dbl'), sb = progSummary('tp');
+    const row = (lbl, fa, fb, diff) => `<tr><td>${lbl}</td><td class="n">${fa}</td><td class="n">${fb}</td><td class="n">${diff ?? ''}</td></tr>`;
+    const pp = v => fmtP(v, 2);
+    const head = `<div class="cmp-head">${[sa, sb].map(x => `<div class="card cmp-card click" data-prog="${x.id}"><div class="cmp-t">${esc(x.p.name)}</div>
+        <div class="muted small">BL ${esc(x.files.baseline?.file || '—')}<br>Update ${esc(x.files.update?.file || '—')} · cut-off ${fd(x.dd)}</div>
+        <div class="cmp-big"><div><span>Planned</span><b>${pp(x.planPct)}</b></div><div><span>Actual</span><b>${pp(x.actPct)}</b></div><div><span>SPI</span><b>${x.spi ? x.spi.toFixed(2) : '—'}</b></div><div><span>Forecast finish</span><b class="${x.slip > 0 ? 'neg' : ''}">${fd(x.fFinish)}</b><em class="muted small">${x.slip > 0 ? '+' : ''}${x.slip} d vs ${fd(x.bFinish)}</em></div></div>
+        <div class="muted small">Click to make it the active programme on all schedule pages</div></div>`).join('')}</div>`;
+    const sumTable = `<div class="table-wrap"><table class="tbl"><thead><tr><th>Measure</th><th class="n">${esc(sa.p.short)}</th><th class="n">${esc(sb.p.short)}</th><th class="n">Target − Detailed</th></tr></thead><tbody>` +
+      row('Cut-off (data date)', fd(sa.dd), fd(sb.dd), dd_(sa.dd, sb.dd) + ' d') +
+      row('Baseline start', fd(sa.bStart), fd(sb.bStart), dTag(dd_(sa.bStart, sb.bStart)) + ' d') +
+      row('Baseline finish', fd(sa.bFinish), fd(sb.bFinish), dTag(dd_(sa.bFinish, sb.bFinish)) + ' d') +
+      row('Forecast finish (update)', `<b>${fd(sa.fFinish)}</b>`, `<b>${fd(sb.fFinish)}</b>`, dTag(dd_(sa.fFinish, sb.fFinish)) + ' d') +
+      row('Delay vs own baseline', dTag(sa.slip) + ' d', dTag(sb.slip) + ' d', dTag(sb.slip - sa.slip) + ' d') +
+      row('Planned % at cut-off', pp(sa.planPct), pp(sb.planPct), (sb.planPct - sa.planPct >= 0 ? '+' : '') + (sb.planPct - sa.planPct).toFixed(2) + '%') +
+      row('Actual % at cut-off', pp(sa.actPct), pp(sb.actPct), (sb.actPct - sa.actPct >= 0 ? '+' : '') + (sb.actPct - sa.actPct).toFixed(2) + '%') +
+      row('Variance (actual − planned)', pp(sa.actPct - sa.planPct), pp(sb.actPct - sb.planPct), '') +
+      row('SPI', sa.spi ? sa.spi.toFixed(2) : '—', sb.spi ? sb.spi.toFixed(2) : '—', '') +
+      row('Planned value at cut-off (SAR)', fmt(sa.pv, 0), fmt(sb.pv, 0), fmt(sb.pv - sa.pv, 0)) +
+      row('Earned value at cut-off (SAR)', fmt(sa.ev, 0), fmt(sb.ev, 0), fmt(sb.ev - sa.ev, 0)) +
+      row('Activities', sa.n.toLocaleString(), sb.n.toLocaleString(), (sb.n - sa.n).toLocaleString()) +
+      row('Completed / in progress / not started', `${sa.done} / ${sa.active} / ${sa.ns}`, `${sb.done} / ${sb.active} / ${sb.ns}`, '') +
+      row('Late vs baseline (not complete)', sa.late.toLocaleString(), sb.late.toLocaleString(), (sb.late - sa.late).toLocaleString()) +
+      row('Critical (TF ≤ 0)', sa.crit.toLocaleString(), sb.crit.toLocaleString(), (sb.crit - sa.crit).toLocaleString()) +
+      row('Negative float', sa.neg.toLocaleString(), sb.neg.toLocaleString(), (sb.neg - sa.neg).toLocaleString()) +
+      '</tbody></table></div>';
+
+    // junctions
+    const ja = withProg('dbl', () => junctions()), jb = withProg('tp', () => junctions());
+    const jRows = ja.map(j => { const k = jb.find(x => x.key === j.key); if (!k) return ''; return `<tr><td><b>${j.name}</b> <span class="muted small">Ch ${esc(j.ch)}</span></td>
+      <td class="n">${fmtP(j.st.plan, 1)}</td><td class="n">${fmtP(k.st.plan, 1)}</td><td class="n">${fmtP(j.st.act, 1)}</td><td class="n">${fmtP(k.st.act, 1)}</td>
+      <td>${fd(j.st.bFinish)}</td><td>${fd(k.st.bFinish)}</td><td><b>${fd(j.st.finish)}</b></td><td><b>${fd(k.st.finish)}</b></td><td class="n">${dTag(dd_(j.st.finish, k.st.finish))}</td></tr>`; }).join('');
+
+    // WBS level 1–2
+    const W2 = wbsCompare(1).filter(r => r.dbl && r.tp);
+    const wRows = W2.map(r => `<tr class="${r.depth === 0 ? 'g-grp' : ''}"><td>${' '.repeat(r.depth)}<b>${esc(r.code)}</b> ${esc(r.name)}</td>
+      <td class="n">${fmtP(r.dbl.plan, 1)}</td><td class="n">${fmtP(r.tp.plan, 1)}</td><td class="n">${fmtP(r.dbl.act, 1)}</td><td class="n">${fmtP(r.tp.act, 1)}</td>
+      <td>${fd(r.dbl.bFinish)}</td><td>${fd(r.tp.bFinish)}</td><td>${fd(r.dbl.finish)}</td><td>${fd(r.tp.finish)}</td><td class="n">${dTag(dd_(r.dbl.finish, r.tp.finish))}</td></tr>`).join('');
+
+    // next 12 months
+    const months = []; let m = monthStart(Math.max(sa.dd, sb.dd));
+    for (let i = 0; i < 12; i++) { months.push(mk(m)); m = addMonths(m, 1); }
+    const mv = (id, key, k) => withProg(id, () => (X[key][k] || 0) * X.k);
+    const mRows = months.map(k => `<tr><td><b>${monthLabel(k)}</b></td><td class="n">${fmt(mv('dbl', 'pv', k), 0)}</td><td class="n">${fmt(mv('dbl', 'fc', k), 0)}</td><td class="n">${fmt(mv('tp', 'pv', k), 0)}</td><td class="n">${fmt(mv('tp', 'fc', k), 0)}</td><td class="n">${dTag(Math.round((mv('tp', 'fc', k) - mv('dbl', 'fc', k)) / 1e3)) } K</td></tr>`).join('');
+
+    const ap = actPairs();
+    host.innerHTML = head + `<div class="grid g-1-1"><div class="card"><div class="card-h"><h3>Programme summary</h3><span class="muted">Positive difference = Target Plan later</span></div>${sumTable}</div>
+      <div class="card"><div class="card-h"><h3>Cumulative progress — both programmes</h3></div><div class="chart-box tall"><canvas id="chCmpCurve"></canvas></div></div></div>
+      <div class="grid g-1-1"><div class="card"><div class="card-h"><h3>Delay distribution (finish vs own baseline, open activities)</h3></div><div class="chart-box"><canvas id="chCmpDelay"></canvas></div></div>
+      <div class="card"><div class="card-h"><h3>Monthly value — baseline & forecast, both programmes</h3></div><div class="chart-box"><canvas id="chCmpMonthly"></canvas></div></div></div>
+      <div class="card"><div class="card-h"><h3>Junctions — both programmes</h3><span class="muted">Planned / actual % at each cut-off · finish dates · forecast difference (days)</span></div>
+        <div class="table-wrap"><table class="tbl"><thead><tr><th>Junction</th><th class="n">Planned DBL</th><th class="n">Planned TP</th><th class="n">Actual DBL</th><th class="n">Actual TP</th><th>BL finish DBL</th><th>BL finish TP</th><th>Forecast DBL</th><th>Forecast TP</th><th class="n">Δ forecast</th></tr></thead><tbody>${jRows}</tbody></table></div></div>
+      <div class="card"><div class="card-h"><h3>WBS levels 1–2 — both programmes</h3><span class="muted">DBL = Detailed Baseline · TP = Target Plan</span></div>
+        <div class="table-wrap"><table class="tbl"><thead><tr><th>WBS</th><th class="n">Planned DBL</th><th class="n">Planned TP</th><th class="n">Actual DBL</th><th class="n">Actual TP</th><th>BL finish DBL</th><th>BL finish TP</th><th>Forecast DBL</th><th>Forecast TP</th><th class="n">Δ forecast</th></tr></thead><tbody>${wRows}</tbody></table></div></div>
+      <div class="card"><div class="card-h"><h3>Forecast — next 12 months (SAR excl. VAT)</h3></div>
+        <div class="table-wrap"><table class="tbl"><thead><tr><th>Month</th><th class="n">DBL planned</th><th class="n">DBL forecast</th><th class="n">TP planned</th><th class="n">TP forecast</th><th class="n">Δ forecast (TP − DBL)</th></tr></thead><tbody>${mRows}</tbody></table></div></div>
+      <div class="card" id="cmpActs"><div class="card-h"><h3>Activities — side by side</h3><span class="muted">${ap.pairs.length.toLocaleString()} common IDs · ${ap.onlyA.length} only in Detailed · ${ap.onlyB.length} only in Target</span></div>
+        <div class="g-toolbar">
+          <div class="seg" id="cfShow"><button data-v="diff">Forecast differs</button><button data-v="late">Late in both</button><button data-v="onlyA">Only in Detailed</button><button data-v="onlyB">Only in Target</button><button data-v="all">All common</button></div>
+          <label class="chk">Difference ≥ <input type="number" id="cfThr" min="0" value="${CF.thr}" style="width:64px"> days</label>
+          <select id="cfL1"><option value="">All WBS</option>${PS.dbl.S.wbs.filter(w => w.depth === 0).map(w => `<option value="${esc(norm(w.name))}">${esc(w.code)} — ${esc(w.name)}</option>`).join('')}</select>
+          <input type="search" id="cfQ" placeholder="Search ID or activity…" value="${esc(CF.q)}">
+          <button class="btn ghost" id="cfCsv">⬇ CSV</button>
+        </div>
+        <div id="cmpActBody"></div></div>`;
+    drawCmpActs(ap);
+    $$('#cfShow button').forEach(b => b.onclick = () => { CF.show = b.dataset.v; drawCmpActs(ap); });
+    $('#cfThr').oninput = e => { CF.thr = +e.target.value || 0; drawCmpActs(ap); };
+    $('#cfL1').onchange = e => { CF.l1 = e.target.value; drawCmpActs(ap); };
+    $('#cfQ').oninput = e => { CF.q = e.target.value; clearTimeout(renderCompare.t); renderCompare.t = setTimeout(() => drawCmpActs(ap), 200); };
+    $('#cfCsv').onclick = () => cmpCsv();
+
+    // charts
+    const col = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+    const base = A.baseOpts;
+    const mkc = (id, cfg) => { if (charts[id]) charts[id].destroy(); charts[id] = new Chart($('#' + id), cfg); };
+    const keys = [...new Set([...Object.keys(PS.dbl.X.pv), ...Object.keys(PS.tp.X.pv), ...Object.keys(PS.dbl.X.fc), ...Object.keys(PS.tp.X.fc)])].sort();
+    const cum = (id, key, startEv) => withProg(id, () => { let c = startEv ? X.ev : 0; const ddk = mk(X.dd); return keys.map(k => { if (startEv && k < ddk) return null; c += X[key][k] || 0; return +(c / S.meta.bac * 100).toFixed(2); }); });
+    mkc('chCmpCurve', { type: 'line', data: { labels: keys.map(monthLabel), datasets: [
+      { label: 'Detailed — baseline', data: cum('dbl', 'pv'), borderColor: col('--s2'), borderDash: [6, 4], borderWidth: 2, pointRadius: 0, tension: .3 },
+      { label: 'Detailed — forecast', data: cum('dbl', 'fc', true), borderColor: col('--s2'), borderWidth: 2.5, pointRadius: 0, tension: .3 },
+      { label: 'Target — baseline', data: cum('tp', 'pv'), borderColor: col('--s1'), borderDash: [6, 4], borderWidth: 2, pointRadius: 0, tension: .3 },
+      { label: 'Target — forecast', data: cum('tp', 'fc', true), borderColor: col('--s1'), borderWidth: 2.5, pointRadius: 0, tension: .3 }] },
+      options: base({ scales: { x: base().scales.x, y: { ...base().scales.y, max: 100, ticks: { color: col('--text-2'), callback: v => v + '%' } } }, plugins: { ...base().plugins, tooltip: { ...base().plugins.tooltip, callbacks: { label: c => `${c.dataset.label}: ${fmtP(c.parsed.y, 2)}` } } } }) });
+    mkc('chCmpDelay', { type: 'bar', data: { labels: ['On time / early', '1–30 d', '31–90 d', '91–180 d', '> 180 d'], datasets: [
+      { label: sa.p.short, data: sa.buckets, backgroundColor: col('--s2'), borderRadius: 4, maxBarThickness: 30 },
+      { label: sb.p.short, data: sb.buckets, backgroundColor: col('--s1'), borderRadius: 4, maxBarThickness: 30 }] },
+      options: base({ scales: { x: base().scales.x, y: { ...base().scales.y, ticks: { color: col('--text-2'), precision: 0 } } } }) });
+    mkc('chCmpMonthly', { type: 'bar', data: { labels: months.map(monthLabel), datasets: [
+      { label: 'Detailed planned', data: months.map(k => mv('dbl', 'pv', k)), backgroundColor: col('--s2') + '88', borderRadius: 3, maxBarThickness: 14 },
+      { label: 'Detailed forecast', data: months.map(k => mv('dbl', 'fc', k)), backgroundColor: col('--s2'), borderRadius: 3, maxBarThickness: 14 },
+      { label: 'Target planned', data: months.map(k => mv('tp', 'pv', k)), backgroundColor: col('--s1') + '88', borderRadius: 3, maxBarThickness: 14 },
+      { label: 'Target forecast', data: months.map(k => mv('tp', 'fc', k)), backgroundColor: col('--s1'), borderRadius: 3, maxBarThickness: 14 }] },
+      options: base({ scales: { x: base().scales.x, y: { ...base().scales.y, ticks: { color: col('--text-2'), callback: v => fmtM(v) } } }, plugins: { ...base().plugins, tooltip: { ...base().plugins.tooltip, callbacks: { label: c => `${c.dataset.label}: SAR ${fmt(c.parsed.y, 0)}` } } } }) });
+  }
+  let cmpRows = [];
+  function drawCmpActs(ap) {
+    $$('#cfShow button').forEach(b => b.classList.toggle('on', b.dataset.v === CF.show));
+    const q = norm(CF.q);
+    const l1 = (id, pid) => withProg(pid, () => norm((X.wbsPath(id)[0] || {}).name));
+    const okL1 = (a, pid) => !CF.l1 || l1(a.w, pid) === CF.l1;
+    const okQ = a => !q || norm(a.c + ' ' + a.n).includes(q);
+    let html = '';
+    if (CF.show === 'onlyA' || CF.show === 'onlyB') {
+      const pid = CF.show === 'onlyA' ? 'dbl' : 'tp';
+      const list = (CF.show === 'onlyA' ? ap.onlyA : ap.onlyB).filter(a => okQ(a) && okL1(a, pid));
+      cmpRows = list.map(a => ({ c: a.c, n: a.n, only: pid, a }));
+      html = tbl([['ID'], ['Activity'], ['WBS'], ['BL start'], ['BL finish'], ['Forecast finish'], ['%', 1], ['Status']], list.slice(0, 600).map(a => `<tr class="click" data-cmp="${esc(a.c)}"><td><b>${esc(a.c)}</b></td><td class="desc">${esc(a.n)}</td><td class="small">${esc(withProg(pid, () => (X.W[a.w] || {}).name || ''))}</td><td>${fd(a.bs)}</td><td>${fd(a.bf)}</td><td>${fd(a.f)}</td><td class="n">${Math.round(a.p)}%</td><td>${stTag(a)}</td></tr>`));
+    } else {
+      let list = ap.pairs.filter(r => okQ(r.a) && okL1(r.a, 'dbl'));
+      list.forEach(r => { r.dBL = dd_(r.a.bf, r.b.bf); r.dF = dd_(r.a.f, r.b.f); r.vA = finVar(r.a); r.vB = finVar(r.b); });
+      if (CF.show === 'diff') list = list.filter(r => r.dF !== null && Math.abs(r.dF) >= CF.thr).sort((x, y) => Math.abs(y.dF) - Math.abs(x.dF));
+      else if (CF.show === 'late') list = list.filter(r => !isDone(r.a) && (r.vA || 0) >= Math.max(1, CF.thr) && (r.vB || 0) >= Math.max(1, CF.thr)).sort((x, y) => (y.vA + y.vB) - (x.vA + x.vB));
+      cmpRows = list;
+      html = `<p class="muted small">${list.length.toLocaleString()} activities${list.length > 600 ? ' — showing the first 600' : ''}</p>` + tbl([['ID'], ['Activity'], ['BL finish DBL'], ['BL finish TP'], ['Δ BL', 1], ['Forecast DBL'], ['Forecast TP'], ['Δ forecast', 1], ['Late DBL', 1], ['Late TP', 1], ['%', 1], ['Status']],
+        list.slice(0, 600).map(r => `<tr class="click" data-cmp="${esc(r.c)}"><td><b>${esc(r.c)}</b></td><td class="desc">${esc(r.b.n)}</td><td>${fd(r.a.bf)}</td><td>${fd(r.b.bf)}</td><td class="n">${dTag(r.dBL)}</td><td>${fd(r.a.f)}</td><td>${fd(r.b.f)}</td><td class="n">${dTag(r.dF)}</td><td class="n">${dTag(r.vA)}</td><td class="n">${dTag(r.vB)}</td><td class="n">${Math.round(r.b.p)}%</td><td>${stTag(r.b)}</td></tr>`));
+    }
+    $('#cmpActBody').innerHTML = html;
+  }
+  function cmpCsv() {
+    const q = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
+    const head = ['Activity ID', 'Activity', 'BL finish DBL', 'BL finish TP', 'Forecast DBL', 'Forecast TP', 'Delta forecast (d)', 'Late DBL (d)', 'Late TP (d)', '% complete'];
+    const lines = [head.map(q).join(',')].concat(cmpRows.map(r => r.only ? [r.c, r.n, r.only === 'dbl' ? ds(r.a.bf) : '', r.only === 'tp' ? ds(r.a.bf) : '', r.only === 'dbl' ? ds(r.a.f) : '', r.only === 'tp' ? ds(r.a.f) : '', '', '', '', r.a.p] : [r.c, r.b.n, ds(r.a.bf), ds(r.b.bf), ds(r.a.f), ds(r.b.f), r.dF, r.vA, r.vB, r.b.p]).map(r => r.map(q).join(',')));
+    const blob = new Blob(['﻿' + lines.join('\n')], { type: 'text/csv' });
+    const l = document.createElement('a'); l.href = URL.createObjectURL(blob); l.download = 'programme-comparison-' + CF.show + '.csv'; l.click();
+  }
+  function cmpDetail(code) {
+    const get = id => PS[id] ? withProg(id, () => { const a = X.A[code]; return a ? { a, path: X.wbsPath(a.w).map(w => w.code + ' ' + w.name).join(' › '), fv: finVar(a), crit: critical(a) } : null; }) : null;
+    const x = get('dbl'), y = get('tp');
+    const r = (l, f) => `<tr><td>${l}</td><td>${x ? f(x) : '<span class="muted">not in programme</span>'}</td><td>${y ? f(y) : '<span class="muted">not in programme</span>'}</td></tr>`;
+    const nm = (x || y).a.n;
+    return {
+      title: `${esc(code)} — ${esc(nm)}`, sub: 'Detailed Baseline Rev.04 vs Target Plan',
+      body: `<div class="table-wrap"><table class="tbl"><thead><tr><th>Field</th><th>Detailed Baseline</th><th>Target Plan</th></tr></thead><tbody>` +
+        r('WBS', o => esc(o.path)) + r('Baseline start', o => fd(o.a.bs)) + r('Baseline finish', o => fd(o.a.bf)) +
+        r('Start (actual / forecast)', o => fd(o.a.s) + (o.a.as ? ' <span class="muted small">actual</span>' : '')) + r('Finish (forecast)', o => '<b>' + fd(o.a.f) + '</b>') +
+        r('Finish variance vs own baseline', o => dTag(o.fv) + ' d') + r('% complete', o => fmtP(o.a.p, 1)) + r('Status', o => stTag(o.a)) +
+        r('Original / remaining duration', o => `${o.a.d} d / ${o.a.rd} d`) + r('Total float', o => o.a.tf === null ? '—' : Math.round(o.a.tf) + ' d' + (o.crit ? ' <span class="status bad">Critical</span>' : '')) +
+        r('Value', o => o.a.wt ? 'SAR ' + fmt(o.a.wt * withProg(o === x ? 'dbl' : 'tp', () => X.k), 0) : '—') +
+        `</tbody></table></div>` + (x && y ? `<p class="muted">Forecast finish difference: <b>${dTag(dd_(x.a.f, y.a.f))} d</b> (Target − Detailed) · baseline finish difference: <b>${dTag(dd_(x.a.bf, y.a.bf))} d</b></p>` : '') +
+        `<p class="row-btns">${x ? `<button class="btn" data-cmpopen="dbl|${esc(code)}">Full details in Detailed Baseline →</button>` : ''}${y ? `<button class="btn" data-cmpopen="tp|${esc(code)}">Full details in Target Plan →</button>` : ''}</p>`
+    };
+  }
+  document.addEventListener('click', e => {
+    const c = e.target.closest('[data-cmp]');
+    if (c) { A.Details.open(() => cmpDetail(c.dataset.cmp)); return; }
+    const o = e.target.closest('[data-cmpopen]');
+    if (o) { const [pid, code] = o.dataset.cmpopen.split('|'); A.Details.open(() => withProg(pid, () => actDetail(code))); }
+  });
+
+  // ---------------- junction slides (presentation) ----------------
+  let SLIDES = null;
+  window.JSLIDES = { get: key => SLIDES ? SLIDES.slides.filter(s => s.key === key) : [], meta: () => SLIDES };
+  async function loadSlides() {
+    let s = null;
+    try { s = await idbGet('slides'); } catch (e) { }
+    if (!s) { try { const r = await fetch('data/slides.json', { cache: 'no-store' }); if (r.ok) s = await r.json(); } catch (e) { } }
+    SLIDES = s;
+  }
+  async function onSlides(files) {
+    const st = $('#slStatus');
+    const imgs = [...files].filter(f => /\.(jpe?g|png)$/i.test(f.name)).sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+    if (!imgs.length) { st.innerHTML = '✗ Export the presentation as images first (PowerPoint: File › Export › JPEG) and drop the slide images here.'; return; }
+    st.innerHTML = `Reading ${imgs.length} images…`;
+    const order = ['overview', 'J7', 'J5', 'J3', 'J1'];
+    const slides = [];
+    for (const [i, f] of imgs.entries()) {
+      const bmp = await createImageBitmap(f);
+      const sc = Math.min(1, 1870 / bmp.width);
+      const c = document.createElement('canvas'); c.width = Math.round(bmp.width * sc); c.height = Math.round(bmp.height * sc);
+      c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
+      const m = /junction[\s_-]*0?([1357])|\bj[\s_-]*0?([1357])\b/i.exec(f.name);
+      slides.push({ n: i + 1, key: m ? 'J' + (m[1] || m[2]) : (order[i] || 'overview'), title: f.name.replace(/\.[^.]+$/, ''), date: $('#slDate').value || '', src: c.toDataURL('image/jpeg', .82) });
+    }
+    SLIDES = { v: 1, file: imgs.map(f => f.name).join(', '), exported: new Date().toISOString().slice(0, 10), slides };
+    await idbSet('slides', SLIDES);
+    st.innerHTML = `✓ ${slides.length} slides loaded: ` + slides.map((s, i) => `<label class="chk">${esc(s.title)} → <select data-sli="${i}">${['overview', 'J7', 'J5', 'J3', 'J1'].map(k => `<option ${k === s.key ? 'selected' : ''}>${k}</option>`).join('')}</select></label>`).join(' ') +
+      '<br>Check the junction for each slide, then <b>Download slides.json</b> and upload it to <code>data/</code>.';
+    $$('[data-sli]').forEach(sel => sel.onchange = async () => { SLIDES.slides[+sel.dataset.sli].key = sel.value; await idbSet('slides', SLIDES); renderJunctions(); });
+    renderJunctions();
+  }
+
   // ---------------- import / export ----------------
   function setStatus(t) { $('#xerStatus').innerHTML = t; }
   function readText(file) { return new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.onerror = () => rej(fr.error); fr.readAsText(file, 'windows-1252'); }); }
+  const pend = {};   // programme id → { b, u, fb, fu }
   async function onXer(kind, file) {
-    setStatus(`Reading <b>${esc(file.name)}</b> (${(file.size / 1048576).toFixed(1)} MB)…`);
+    const pid = $('#xerProg').value, P = prog(pid);
+    const pe = pend[pid] || (pend[pid] = { b: null, u: null, fb: '', fu: '' });
+    setStatus(`Reading <b>${esc(file.name)}</b> (${(file.size / 1048576).toFixed(1)} MB) into <b>${esc(P.name)}</b>…`);
     await new Promise(r => setTimeout(r, 30));
     try {
       const parsed = readFile(await readText(file), file.name);
-      pending[kind] = parsed; pending['f' + kind] = file.name;
-      // keep the other half from the current schedule if not re-imported
-      const msg = [`✓ ${kind === 'b' ? 'Baseline' : 'Update'} "${file.name}": ${parsed.acts.length.toLocaleString()} activities, ${parsed.wbs.length} WBS nodes, ${parsed.rels.length.toLocaleString()} relationships · data date ${fd(parsed.proj.dataDate)}`];
-      S = combine(pending.b, pending.u, { b: pending.fb || S?.meta.baseline?.file, u: pending.fu || S?.meta.update?.file });
-      await idbSet('schedule', S);
-      $('#gWbs').dataset.ready = '';
-      index();
-      msg.push(`✓ Schedule ready: ${S.acts.length.toLocaleString()} activities, weighted by ${S.meta.weighting}${pending.b && pending.u ? '' : ' — import the ' + (pending.b ? 'update' : 'baseline') + ' file too for baseline-vs-update comparison'}`);
-      msg.push('To publish for everyone: click "Download schedule.json" and upload it to the repo folder data/.');
+      pe[kind] = parsed; pe['f' + kind] = file.name;
+      const old = PS[pid] && PS[pid].S;
+      // re-use the other half (baseline or update) from the programme already loaded, by re-reading is not possible → keep what was imported this session
+      const msg = [`✓ ${esc(P.name)} — ${kind === 'b' ? 'baseline' : 'update'} "${esc(file.name)}": ${parsed.acts.length.toLocaleString()} activities, ${parsed.wbs.length} WBS nodes · data date ${fd(parsed.proj.dataDate)}`];
+      if (!(pe.b && pe.u) && old) msg.push(`• Drop the ${pe.b ? 'update' : 'baseline'} of this programme too — both files are needed to rebuild it.`);
+      if (pe.b && pe.u || !old) {
+        S = combine(pe.b, pe.u, { b: pe.fb, u: pe.fu });
+        index();
+        PS[pid] = { S, X, src: 'local import' };
+        await idbSet('schedule:' + pid, S);
+        activate(pid);
+        msg.push(`✓ ${esc(P.name)} ready: ${S.acts.length.toLocaleString()} activities. To publish: <b>Download</b> → upload <code>${P.out}</code> to <code>data/</code>.`);
+        renderAll();
+      }
       setStatus(msg.join('<br>'));
-      A.render(); renderSchedule(); renderForecast(); renderJunctions();
     } catch (e) { setStatus('✗ ' + esc(e.message)); }
   }
   function wireImport() {
@@ -825,29 +1120,42 @@
       ['dragleave', 'drop'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('over'); }));
       drop.addEventListener('drop', e => e.dataTransfer.files[0] && onXer(k, e.dataTransfer.files[0]));
     });
+    $('#xerProg').innerHTML = PROGRAMS.map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('');
     $('#schedExport').onclick = () => {
-      if (!S) return setStatus('Nothing to export yet.');
-      const blob = new Blob([JSON.stringify(S)], { type: 'application/json' });
-      const l = document.createElement('a'); l.href = URL.createObjectURL(blob); l.download = 'schedule.json'; l.click();
+      const pid = $('#xerProg').value, P = prog(pid);
+      if (!PS[pid]) return setStatus('Nothing to export for ' + esc(P.name) + ' yet.');
+      const blob = new Blob([JSON.stringify(PS[pid].S)], { type: 'application/json' });
+      const l = document.createElement('a'); l.href = URL.createObjectURL(blob); l.download = P.out; l.click();
     };
-    $('#schedClear').onclick = async () => { await idbDel('schedule'); pending.b = pending.u = null; S = null; setStatus('Local schedule cleared — reloading published schedule…'); await boot(true); };
+    $('#schedClear').onclick = async () => { for (const p of PROGRAMS) await idbDel('schedule:' + p.id); await idbDel('schedule'); setStatus('Local schedules cleared — reloading the published ones…'); await boot(true); };
+    const sd = $('#dropSl'), si = $('#fileSl');
+    if (sd) {
+      si.onchange = () => si.files.length && onSlides(si.files);
+      ['dragenter', 'dragover'].forEach(ev => sd.addEventListener(ev, e => { e.preventDefault(); sd.classList.add('over'); }));
+      ['dragleave', 'drop'].forEach(ev => sd.addEventListener(ev, e => { e.preventDefault(); sd.classList.remove('over'); }));
+      sd.addEventListener('drop', e => e.dataTransfer.files.length && onSlides(e.dataTransfer.files));
+      $('#slExport').onclick = () => { if (!SLIDES) return; const blob = new Blob([JSON.stringify(SLIDES)], { type: 'application/json' }); const l = document.createElement('a'); l.href = URL.createObjectURL(blob); l.download = 'slides.json'; l.click(); };
+      $('#slClear').onclick = async () => { await idbDel('slides'); await loadSlides(); renderJunctions(); $('#slStatus').textContent = 'Local slides cleared — showing the published ones.'; };
+    }
   }
 
   async function boot(skipLocal) {
-    let s = null, src = '';
-    setStatus('Loading schedule…');
-    const sb = $('#schedBody'); if (sb && !S) sb.innerHTML = '<div class="card empty"><h3>Loading P6 schedule…</h3><p class="muted">About 6 MB — a few seconds on the first visit.</p></div>';
-    if (!skipLocal) { s = await idbGet('schedule'); if (s) src = 'local import'; }
-    if (!s) {
-      try { const r = await fetch('data/schedule.json', { cache: 'no-store' }); if (r.ok) { s = await r.json(); src = 'published data/schedule.json'; } } catch (e) { }
-    }
-    S = s;
-    if (S) { index(); setStatus(`Schedule loaded from ${src}: baseline <b>${esc(S.meta.baseline?.file || '—')}</b> · update <b>${esc(S.meta.update?.file || '—')}</b> · data date ${fd(X.dd)}`); }
-    A.render(); renderSchedule(); renderForecast(); renderJunctions();
+    setStatus('Loading schedules…');
+    const sb = $('#schedBody'); if (sb && !S) sb.innerHTML = '<div class="card empty"><h3>Loading P6 schedules…</h3><p class="muted">About 6 MB per programme — a few seconds on the first visit.</p></div>';
+    await Promise.all(PROGRAMS.map(async p => {
+      let s = null, src = '';
+      if (!skipLocal) { s = await idbGet('schedule:' + p.id); if (!s && p.id === 'tp') s = await idbGet('schedule'); if (s) src = 'local import'; }
+      if (!s) { try { const r = await fetch(p.file, { cache: 'no-store' }); if (r.ok) { s = await r.json(); src = 'published ' + p.file; } } catch (e) { } }
+      if (s) { S = s; index(); PS[p.id] = { S, X, src }; } else delete PS[p.id];
+    }));
+    await loadSlides();
+    activate(ACTIVE);
+    setStatus(PROGRAMS.map(p => PS[p.id] ? `✓ <b>${esc(p.name)}</b> — ${esc(PS[p.id].src)} · baseline ${esc(PS[p.id].S.meta.baseline?.file || '—')} · update ${esc(PS[p.id].S.meta.update?.file || '—')} · cut-off ${fd(PS[p.id].X.dd)}` : `✗ <b>${esc(p.name)}</b> not published`).join('<br>'));
+    renderAll();
   }
 
   wireFilters();
   wireImport();
-  A.onTab = n => { if (n === 'schedule') { renderSchedule(); } if (n === 'forecast') renderForecast(); if (n === 'junctions') renderJunctions(); };
+  A.onTab = n => { if (n === 'schedule') { renderSchedule(); } if (n === 'forecast') renderForecast(); if (n === 'junctions') renderJunctions(); if (n === 'compare') renderCompare(); };
   A.whenReady(() => boot());
 })();

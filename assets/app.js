@@ -351,13 +351,14 @@
     if (P6) {
       $('#p6Pill').textContent = 'P6 cut-off ' + fmtDate(P6.dataDate);
       const v = P6.actPct - P6.planPct, slip = Math.round((toDate(P6.fFinish) - toDate(P6.bFinish)) / 864e5);
-      $('#p6Strip').innerHTML = `<div class="p6h"><span class="p6t">Primavera P6 — cut-off <b>${fmtDate(P6.dataDate)}</b></span><span class="muted small">${esc(P6.update)}</span></div>
+      $('#p6Strip').innerHTML = `<div class="p6h"><span class="p6t">Primavera P6 · <b>${esc(P6.prog)}</b> — cut-off <b>${fmtDate(P6.dataDate)}</b></span><span class="muted small">${esc(P6.update)}</span></div>
         <div class="p6k">
           <div class="click" data-tabgo="schedule"><span>Planned</span><b>${fmtP(P6.planPct)}</b></div>
           <div class="click" data-tabgo="schedule"><span>Actual</span><b>${fmtP(P6.actPct)}</b></div>
           <div class="click" data-tabgo="schedule"><span>Variance</span><b class="${v < 0 ? 'neg' : 'pos'}">${(v > 0 ? '+' : '') + v.toFixed(2)}%</b></div>
           <div class="click" data-tabgo="forecast"><span>SPI</span><b>${P6.spi !== null ? P6.spi.toFixed(2) : '—'}</b>${spiBadge(P6.spi)}</div>
           <div class="click" data-tabgo="schedule"><span>Forecast finish</span><b>${fmtDate(P6.fFinish)}</b><em class="muted small">${slip > 0 ? '+' + slip + ' d vs baseline' : slip < 0 ? -slip + ' d early' : 'on baseline'}</em></div>
+          <div class="click" data-tabgo="compare"><span>Programmes</span><b>Detailed vs Target</b><em class="muted small">compare ›</em></div>
           <div class="click" data-tabgo="junctions"><span>Junctions</span><b>J7 · J5 · J3 · J1</b><em class="muted small">progress & deck pours ›</em></div>
         </div>
         <div class="p6bar"><i style="width:${Math.min(100, P6.actPct)}%"></i><span style="left:${Math.min(100, P6.planPct)}%" title="Planned ${fmtP(P6.planPct)}"></span></div>`;
