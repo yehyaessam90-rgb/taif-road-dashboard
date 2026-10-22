@@ -37,3 +37,8 @@ Settings → Pages → *Deploy from a branch* → `main` / root → Save. The si
 - A programme switch sits on the Schedule, Junctions and Forecast pages (default: Detailed Baseline); the Overview strip follows it.
 - **Compare Programmes** tab: summary, curves, delay distribution, monthly forecast, junctions, WBS levels 1–2 and activity-by-activity differences (CSV export).
 - Junctions presentation: `data/slides.json` (slide images per junction). Update via Import → "Junctions presentation" with the slides exported as JPEG.
+
+## Forecast to Date, resources and logic
+- **Forecast to Date**: pick any future date (or a from–until window). For every activity: planned % (baseline), forecast % (update dates) and achievable % (limited by the site manpower / equipment against the P6 resource loading), with Achievable / At risk / Overstated flags, value in the period, resource coverage tables and weekly demand charts.
+- Site resources: `data/site-resources.json`, from the daily manpower & equipment sheet (Import → 5).
+- **Logic Check**: out-of-sequence links, SF links, open ends, dangling starts/finishes, leads, long lags, hard constraints — with the automatic correction for each. `downloads/TP_update_261016_logic-fixed.zip` = Target Plan update 16-Oct-26 with the corrections applied (import into P6 and reschedule).

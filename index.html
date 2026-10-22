@@ -12,7 +12,7 @@
   try { if (localStorage.getItem('trd_admin') === 'bb132136cba17058787561571dffaa8bfe3d15bac2e1d651b5f0fb7f76dfd34b') document.documentElement.classList.add('admin'); } catch (e) { }
 </script>
 <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="assets/styles.css?v=202610220816">
+<link rel="stylesheet" href="assets/styles.css?v=202610221016">
 <script>
   window.addEventListener('error', function (e) {
     var b = document.getElementById('jsErr');
@@ -20,8 +20,8 @@
     b.innerHTML = '⚠ The page did not load completely (' + (e.message || 'script error') + '). Press <b>Ctrl + F5</b> to reload the latest version.';
   });
 </script>
-<script src="assets/vendor/chart.umd.min.js?v=202610220816"></script>
-<script src="assets/vendor/xlsx.full.min.js?v=202610220816"></script>
+<script src="assets/vendor/chart.umd.min.js?v=202610221016"></script>
+<script src="assets/vendor/xlsx.full.min.js?v=202610221016"></script>
 </head>
 <body>
 <header class="topbar">
@@ -53,6 +53,8 @@
   <button class="tab" data-tab="schedule">Schedule &amp; Gantt</button>
   <button class="tab" data-tab="junctions">Junctions</button>
   <button class="tab" data-tab="forecast">Forecast</button>
+  <button class="tab" data-tab="outlook">Forecast to Date</button>
+  <button class="tab" data-tab="logic">Logic Check</button>
   <button class="tab" data-tab="compare">Compare Programmes</button>
   <button class="tab" data-tab="weekly">Weekly Report</button>
   <button class="tab" data-tab="quantities">Quantities (BOQ)</button>
@@ -160,6 +162,18 @@
   <!-- JUNCTIONS -->
   <section class="panel" id="tab-junctions">
     <div id="juncBody"></div>
+  </section>
+
+  <!-- FORECAST TO DATE -->
+  <section class="panel" id="tab-outlook">
+    <div id="olCtl"></div>
+    <div class="kpis" id="olKpis"></div>
+    <div id="olBody"></div>
+  </section>
+
+  <!-- LOGIC CHECK -->
+  <section class="panel" id="tab-logic">
+    <div id="lgBody"></div>
   </section>
 
   <!-- COMPARE -->
@@ -294,6 +308,13 @@
       <div class="row-btns"><button class="btn" id="slExport">⬇ Download slides.json</button><button class="btn danger" id="slClear">↺ Clear local slides</button></div>
     </div>
     <div class="card">
+      <div class="card-h"><h3>5 · Site manpower &amp; equipment (.xlsx)</h3></div>
+      <p>Daily manpower / equipment sheet (first column = trade or equipment, then one column per day). Its averages are compared with the P6 resource loading on the <b>Forecast to Date</b> page.</p>
+      <label class="drop" id="dropSite"><input type="file" id="fileSite" accept=".xlsx,.xls"><span class="drop-ic">👷</span><span><b>Drop the manpower &amp; equipment sheet here</b> or click to browse</span><span class="muted small">Sheets: Manpower (indirect + direct) · Equipment</span></label>
+      <div id="siteStatus" class="muted small xer-status"></div>
+      <div class="row-btns"><button class="btn" id="siteExport">⬇ Download site-resources.json</button><button class="btn danger" id="siteClear">↺ Clear local sheet</button></div>
+    </div>
+    <div class="card">
       <div class="card-h"><h3>Import log</h3></div>
       <pre id="importLog" class="log">No file imported in this session.</pre>
     </div>
@@ -318,10 +339,12 @@
 </footer>
 
 <div id="tooltipHost"></div>
-<script src="data/default-data.js?v=202610220816"></script>
-<script src="assets/xer.js?v=202610220816"></script>
-<script src="assets/app.js?v=202610220816"></script>
-<script src="assets/schedule.js?v=202610220816"></script>
-<script src="assets/weekly.js?v=202610220816"></script>
+<script src="data/default-data.js?v=202610221016"></script>
+<script src="assets/xer.js?v=202610221016"></script>
+<script src="assets/app.js?v=202610221016"></script>
+<script src="assets/schedule.js?v=202610221016"></script>
+<script src="assets/weekly.js?v=202610221016"></script>
+<script src="assets/logic.js?v=202610221016"></script>
+<script src="assets/outlook.js?v=202610221016"></script>
 </body>
 </html>

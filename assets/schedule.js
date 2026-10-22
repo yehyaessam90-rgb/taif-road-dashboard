@@ -19,7 +19,7 @@
   const monthLabel = k => new Date(k + '-01T00:00:00Z').toLocaleDateString('en-GB', { month: 'short', year: '2-digit', timeZone: 'UTC' });
 
   // ---------------- XER → schedule ----------------
-  const TABLES = new Set(['PROJECT', 'PROJWBS', 'TASK', 'TASKRSRC', 'TASKPRED', 'CALENDAR']);
+  const TABLES = new Set(['PROJECT', 'PROJWBS', 'TASK', 'TASKRSRC', 'TASKPRED', 'CALENDAR', 'RSRC']);
   function readFile(text, label) {
     const t = XER.parseXer(text, TABLES);
     const tasks = t.TASK || [];
@@ -57,18 +57,33 @@
         ts: pd(r.target_start_date), tf: pd(r.target_end_date), es: pd(r.early_start_date), ef: pd(r.early_end_date),
         as: pd(r.act_start_date), af: pd(r.act_end_date), rs: pd(r.restart_date), re: pd(r.reend_date),
         dur: durH / h, rem: remH / h, tfl: r.total_float_hr_cnt === '' || r.total_float_hr_cnt === undefined ? null : (parseFloat(r.total_float_hr_cnt) || 0) / h,
-        pct, drv: r.driving_path_flag === 'Y', cb: c.b, ca: c.a, cr: c.r
+        pct, drv: r.driving_path_flag === 'Y', cb: c.b, ca: c.a, cr: c.r, cs: r.cstr_type || '', cd: pd(r.cstr_date)
       });
     }
-    const byTid = {};
-    acts.forEach(a => { byTid[a.tid] = a.code; });
+    const byTid = {}, tcal = {}, tById = {};
+    acts.forEach(a => { byTid[a.tid] = a.code; tById[a.tid] = a; });
+    tasks.forEach(r => { tcal[r.task_id] = hpd[r.clndr_id] || 8; });
     const rels = (t.TASKPRED || []).filter(r => byTid[r.task_id] && byTid[r.pred_task_id])
-      .map(r => [byTid[r.pred_task_id], byTid[r.task_id], (r.pred_type || '').replace('PR_', ''), Math.round((parseFloat(r.lag_hr_cnt) || 0) / 8)]);
+      .map(r => [byTid[r.pred_task_id], byTid[r.task_id], (r.pred_type || '').replace('PR_', ''), Math.round((parseFloat(r.lag_hr_cnt) || 0) / (tcal[r.task_id] || 8))]);
+    // labour & equipment still to be spent: [activity, resource, remaining hours, units per hour, start, finish]
+    const rsrc = {};
+    (t.RSRC || []).forEach(r => { if (r.rsrc_type !== 'RT_Mat') rsrc[r.rsrc_id] = { s: r.rsrc_short_name, n: r.rsrc_name, k: r.rsrc_type === 'RT_Labor' ? 'L' : 'E' }; });
+    const res = [], rdict = {};
+    (t.TASKRSRC || []).forEach(r => {
+      const rs = rsrc[r.rsrc_id], a = tById[r.task_id];
+      if (!rs || !a || a.status === 'TK_Complete') return;
+      const q = parseFloat(r.remain_qty) || 0;
+      if (q <= 0) return;
+      const st = pd(r.restart_date) || a.rs || a.es || a.ts, fi = pd(r.reend_date) || a.re || a.ef || a.tf;
+      if (st === null || fi === null) return;
+      rdict[rs.s] = [rs.n, rs.k];
+      res.push([a.code, rs.s, Math.round(q), +(parseFloat(r.remain_qty_per_hr) || 0).toFixed(2), st, fi]);
+    });
     return {
       proj: {
         name: proj.proj_short_name || '', dataDate: pd(proj.last_recalc_date) || pd(proj.next_data_date),
         start: pd(proj.plan_start_date), finish: pd(proj.scd_end_date) || pd(proj.plan_end_date)
-      }, wbs, acts, rels
+      }, wbs, acts, rels, res, rdict
     };
   }
 
@@ -102,7 +117,7 @@
       return {
         c: a.code, n: a.name, w: a.wbs, t: a.type.replace('TT_', ''), st: a.status.replace('TK_', ''), bs, bf, s, f, as: a.as, af: a.af,
         d: +a.dur.toFixed(1), rd: +a.rem.toFixed(1), p: +a.pct.toFixed(1), tf: a.tfl === null ? null : +a.tfl.toFixed(1), dr: a.drv ? 1 : 0,
-        wt: w, ac: a.ca, rc: a.cr, nb: b ? 0 : 1
+        wt: w, ac: a.ca, rc: a.cr, nb: b ? 0 : 1, cs: a.cs ? a.cs.replace('CS_', '') : undefined
       };
     });
     return {
@@ -112,7 +127,7 @@
         update: U ? { file: files.u, name: U.proj.name, dataDate: U.proj.dataDate, start: U.proj.start, finish: U.proj.finish } : null,
         weighting: useCost ? 'cost' : 'duration', bac: acts.reduce((s, a) => s + a.wt, 0)
       },
-      wbs: ordered, acts, rels: cur.rels
+      wbs: ordered, acts, rels: cur.rels, res: cur.res || [], rdict: cur.rdict || {}
     };
   }
 
@@ -845,7 +860,8 @@
       (S ? `<span class="muted small">Baseline <b>${esc(S.meta.baseline?.file || '—')}</b> · update <b>${esc(S.meta.update?.file || '—')}</b> · cut-off <b>${fd(X.dd)}</b></span>` : '');
     $$('.prog-bar').forEach(el => { el.innerHTML = html; });
   }
-  function renderAll() { renderProgBars(); A.render(); renderSchedule(); renderForecast(); renderJunctions(); renderCompare(); }
+  const LISTENERS = [];
+  function renderAll() { renderProgBars(); A.render(); renderSchedule(); renderForecast(); renderJunctions(); renderCompare(); LISTENERS.forEach(fn => { try { fn(); } catch (e) { console.error(e); } }); }
   document.addEventListener('click', e => {
     const b = e.target.closest('[data-prog]');
     if (!b || b.disabled) return;
@@ -1088,14 +1104,17 @@
   function setStatus(t) { $('#xerStatus').innerHTML = t; }
   function readText(file) { return new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.onerror = () => rej(fr.error); fr.readAsText(file, 'windows-1252'); }); }
   const pend = {};   // programme id → { b, u, fb, fu }
+  const RAW = {};    // programme id → { b|u: { text, name } } — raw XER kept in this session for the corrected-XER download
   async function onXer(kind, file) {
     const pid = $('#xerProg').value, P = prog(pid);
     const pe = pend[pid] || (pend[pid] = { b: null, u: null, fb: '', fu: '' });
     setStatus(`Reading <b>${esc(file.name)}</b> (${(file.size / 1048576).toFixed(1)} MB) into <b>${esc(P.name)}</b>…`);
     await new Promise(r => setTimeout(r, 30));
     try {
-      const parsed = readFile(await readText(file), file.name);
+      const raw = await readText(file);
+      const parsed = readFile(raw, file.name);
       pe[kind] = parsed; pe['f' + kind] = file.name;
+      (RAW[pid] = RAW[pid] || {})[kind] = { text: raw, name: file.name };
       const old = PS[pid] && PS[pid].S;
       // re-use the other half (baseline or update) from the programme already loaded, by re-reading is not possible → keep what was imported this session
       const msg = [`✓ ${esc(P.name)} — ${kind === 'b' ? 'baseline' : 'update'} "${esc(file.name)}": ${parsed.acts.length.toLocaleString()} activities, ${parsed.wbs.length} WBS nodes · data date ${fd(parsed.proj.dataDate)}`];
@@ -1154,6 +1173,12 @@
     renderAll();
   }
 
+  // internals shared with outlook.js (forecast-to-date, resources, logic check)
+  window.SCHEDX = {
+    get S() { return S; }, get X() { return X; }, get active() { return ACTIVE; }, PS, PROGRAMS, prog, withProg, RAW,
+    wbsSet, wStats, isDone, isActive, isMs, finVar, critical, stTag, fd, ds, tbl, actDetail, wbsDetail, renderProgBars, spread, DAY,
+    onChange: fn => LISTENERS.push(fn)
+  };
   wireFilters();
   wireImport();
   A.onTab = n => { if (n === 'schedule') { renderSchedule(); } if (n === 'forecast') renderForecast(); if (n === 'junctions') renderJunctions(); if (n === 'compare') renderCompare(); };

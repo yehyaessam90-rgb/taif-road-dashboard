@@ -383,3 +383,14 @@ html.admin .viewer-only { display: none !important; }
 .jslide.wide { box-shadow: none; border: 0; padding: 0; }
 .jslide:hover { border-color: var(--brand); }
 @media (max-width: 1000px) { .jline, .cmp-head { grid-template-columns: 1fr; } .cmp-big { grid-template-columns: 1fr 1fr; } }
+
+/* ---------- forecast to date / logic ---------- */
+.ol-ctl { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; padding: 12px 14px; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow); }
+.ol-ctl label { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; font-size: 13px; }
+.ol-ctl input[type=date] { font: inherit; font-size: 14px; padding: 6px 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); color: var(--text); }
+.lg-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px; margin-bottom: 12px; }
+.lg-k { border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; background: var(--surface-2); display: flex; flex-direction: column; gap: 4px; }
+.lg-k b { font-size: 22px; }
+.lg-k div { font-size: 13px; color: var(--text-2); font-weight: 600; }
+.lg-k.on, .lg-k:hover { border-color: var(--brand); background: color-mix(in srgb, var(--brand) 8%, var(--surface)); }
+.lg-k .status { align-self: flex-start; }
