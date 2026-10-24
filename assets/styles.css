@@ -486,3 +486,4 @@ body.printing main { padding: 0; }
 .ov-la { margin-top: 12px; padding: 10px 12px; border-radius: 8px; background: var(--surface-2); border: 1px solid var(--border); font-size: 13px; }
 .ov-la:hover { border-color: var(--brand); }
 @media print { .xf-bar .xf { display: none; } .subtabs { display: none; } .subpanel { display: none !important; } .subpanel.on { display: block !important; } }
+.chip-plus { font-weight: 500; opacity: .75; font-size: 11px; }

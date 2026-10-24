@@ -48,9 +48,12 @@
   try { Object.assign(XF, JSON.parse(localStorage.getItem('trd_xf') || '{}')); } catch (e) { }
   const save = () => { try { localStorage.setItem('trd_xf', JSON.stringify(XF)); } catch (e) { } };
   const CHIPS = ['Concrete', 'Rebar', 'Formwork', 'Excavation', 'Backfill', 'Piling', 'Precast', 'Waterproofing', 'Asphalt', 'Deck', 'Pier', 'Abutment', 'Duct', 'Manhole'];
+  // a keyword also matches its related activity names (typed or picked from the chips)
+  const SYN = { formwork: ['formwork', 'form work', 'scaffold'], rebar: ['rebar', 'reinforcement'] };
+  const expand = t => SYN[t] || [t];
   function kwTest() {
     const terms = XF.kw.split(',').map(t => t.trim().toLowerCase()).filter(Boolean);
-    const inc = terms.filter(t => !t.startsWith('-')), exc = terms.filter(t => t.startsWith('-')).map(t => t.slice(1)).filter(Boolean);
+    const inc = terms.filter(t => !t.startsWith('-')).flatMap(expand), exc = terms.filter(t => t.startsWith('-')).map(t => t.slice(1)).filter(Boolean).flatMap(expand);
     if (!inc.length && !exc.length) return null;
     return a => { const s = (a.c + ' ' + a.n).toLowerCase(); return (!inc.length || inc.some(t => s.includes(t))) && !exc.some(t => s.includes(t)); };
   }
@@ -82,7 +85,7 @@
         <select class="xf-lane"><option value="">Both lanes</option><option value="Left">Left Lane</option><option value="Right">Right Lane</option></select>
         <label class="chk"><input type="checkbox" class="xf-crit" ${XF.crit ? 'checked' : ''}> Critical only</label>
         <button class="btn ghost xf-reset">Reset</button></div>
-      <div class="xf-row"><span class="xf-l"></span><div class="xf-chips">${CHIPS.map(k => `<button class="chip ${XF.kw.toLowerCase().split(',').map(t => t.trim()).includes(k.toLowerCase()) ? 'on' : ''}" data-chip="${k}">${k}</button>`).join('')}</div></div>
+      <div class="xf-row"><span class="xf-l"></span><div class="xf-chips">${CHIPS.map(k => `<button class="chip ${XF.kw.toLowerCase().split(',').map(t => t.trim()).includes(k.toLowerCase()) ? 'on' : ''}" data-chip="${k}" ${SYN[k.toLowerCase()] ? `title="Includes: ${SYN[k.toLowerCase()].join(', ')}"` : ''}>${k}${SYN[k.toLowerCase()] ? ' <span class=\'chip-plus\'>+' + SYN[k.toLowerCase()].slice(-1)[0].replace(/^./, ch => ch.toUpperCase()) + '</span>' : ''}</button>`).join('')}</div></div>
     </div>`;
     el.querySelector('.xf-st').value = XF.st; el.querySelector('.xf-lane').value = XF.lane;
     const go = () => { save(); refresh(); };
