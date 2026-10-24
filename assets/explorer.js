@@ -216,7 +216,7 @@
     const children = (c.kids[last || ''] || []);
     const kt = kwTest();
     const childRows = children.map(w => { const set = SX.wbsSet(w.id); return { w, st: stats(list.filter(a => set.has(a.w))) }; }).filter(r => r.st.n);
-    host.innerHTML = `<div class="xf-sum muted">${esc(filterLabel())} — data date ${fd(X.dd)}</div>
+    host.innerHTML = refBlock(list) + `
       <div class="kpis">
         ${K('Activities', st.n.toLocaleString(), `✓ ${st.done} done · ▶ ${st.active} active · ○ ${st.n - st.done - st.active} not started`)}
         ${K('Planned at cut-off', fmtP(st.plan, 2), st.byCount ? 'By activity count (no cost loaded)' : 'Cost-weighted', '')}
@@ -273,34 +273,65 @@
       exRows.map(a => [a.c, a.n, (X.W[a.w] || {}).code, (X.W[a.w] || {}).name, a.st, ds(a.bs), ds(a.bf), ds(a.s), ds(a.f), ds(a.as), ds(a.af), a.d, a.rd, a.p, a.tf, SX.finVar(a), Math.round(a.wt * X.k), exVal(a, 'res')]));
   }
 
+  // ---------------- filter reference (exactly what the selection is built from) ----------------
+  function refBlock(list, extra) {
+    const X = SX.X, last = XF.path[XF.path.length - 1];
+    const terms = XF.kw.split(',').map(t => t.trim().toLowerCase()).filter(Boolean);
+    const inc = terms.filter(t => !t.startsWith('-')), exc = terms.filter(t => t.startsWith('-')).map(t => t.slice(1));
+    const exp = t => expand(t).map(x => `“${esc(x)}”`).join(' / ');
+    const nodes = last ? [...SX.wbsSet(last)].map(id => X.W[id]).filter(Boolean) : [];
+    const used = new Set(list.map(a => a.w));
+    const rows = [
+      ['WBS', last ? X.wbsPath(last).map(w => `<b>${esc(w.code)}</b> ${esc(w.name)}`).join(' › ') + ` <span class="muted">— code <b>${esc(X.W[last].code)}</b> and every code below it (${esc(X.W[last].code)}.*): ${nodes.length} WBS nodes, ${used.size} with matching activities</span>` : 'Whole project (no WBS filter)'],
+      ['Activity name / ID', inc.length || exc.length ? `${inc.length ? 'contains ' + inc.map(exp).join(' <b>or</b> ') : 'any'}${exc.length ? ' · excludes ' + exc.map(exp).join(', ') : ''} <span class="muted">(case-insensitive, P6 Activity Name or Activity ID)</span>` : 'Any'],
+      ['Status', XF.st ? { NotStart: 'Not started', Active: 'In progress', Complete: 'Completed' }[XF.st] + ' (P6 activity status)' : 'Any'],
+      ['Lane', XF.lane ? `${XF.lane} Lane — WBS path contains “${XF.lane === 'Left' ? 'Left Lane' : 'Right Lane'}”` : 'Both'],
+      ['Float', XF.crit ? 'Critical only — open activities with total float ≤ 0' : 'Any'],
+      ['Programme', `${esc(SX.prog(SX.active).name)} · baseline ${esc(SX.S.meta.baseline?.file || '—')} · update ${esc(SX.S.meta.update?.file || '—')} · cut-off ${fd(X.dd)}`],
+      ['Result', `<b>${list.length.toLocaleString()}</b> activities${extra ? ' · ' + extra : ''}`]
+    ];
+    return `<details class="card xf-ref"><summary><b>Filter reference</b> <span class="muted">— which P6 codes this selection is built on · ${list.length.toLocaleString()} activities</span></summary>
+      <table class="tbl ref"><tbody>${rows.map(([l, v]) => `<tr><th>${l}</th><td>${v}</td></tr>`).join('')}</tbody></table>
+      ${last && nodes.length > 1 ? `<details class="xf-nodes"><summary class="muted small">Show the ${nodes.length} WBS codes included</summary><div class="xf-codes">${nodes.sort((a, b) => a.code.localeCompare(b.code, undefined, { numeric: true })).map(w => `<span class="${used.has(w.id) ? '' : 'muted'}"><b>${esc(w.code)}</b> ${esc(w.name)}</span>`).join('')}</div></details>` : ''}
+      <div class="row-btns"><button class="btn ghost" data-refcsv="1">⬇ Activity IDs in this selection (CSV)</button></div></details>`;
+  }
+
   // ---------------- RESOURCES ----------------
-  const RS = { kind: 'L', q: '', sort: 'tq', dir: -1 };
-  let rsAgg = [];
+  const RS = { kind: 'L', q: '', sort: 'tq', dir: -1, ck: 'L', cres: '', unit: 'h', metric: 'rm', mper: 'day' };
+  let rsAgg = [], rsList = [];
   const KIND = { L: 'Labour', E: 'Equipment', M: 'Material' };
+  const daysIn = k => new Date(Date.UTC(+k.slice(0, 4), +k.slice(5, 7), 0)).getUTCDate();
+  const workDays = k => daysIn(k) * WD;
+  /* Per assignment, by month:
+     planned  = budget spread over the activity baseline dates
+     actual   = P6 actual units, or budget − remaining when no actuals are booked (as P6 shows it), spread from actual start to the cut-off / actual finish
+     remaining = remaining units spread over the remaining dates */
   function aggregate(list) {
-    const S = SX.S, c = ix(), dd = SX.X.dd / DAY;
+    const S = SX.S, c = ix(), dd = SX.X.dd;
     const by = {};
     list.forEach(a => (c.raByAct[c.actIdx[a.c]] || []).forEach(i => {
       const r = S.ra[i], rs = S.rl[r[1]];
       if (!rs) return;
-      const g = by[r[1]] || (by[r[1]] = { ri: r[1], code: rs[0], name: rs[1], k: rs[2], u: rs[3] || '', tq: 0, aq: 0, rq: 0, cost: 0, acts: new Set(), s: Infinity, f: -Infinity, rows: [] });
-      g.tq += r[2]; g.aq += r[3]; g.rq += r[4]; g.cost += r[6]; g.acts.add(r[0]); g.rows.push(i);
+      const g = by[r[1]] || (by[r[1]] = { ri: r[1], code: rs[0], name: rs[1], k: rs[2], u: rs[3] || '', tq: 0, aq: 0, rq: 0, cost: 0, acts: new Set(), s: Infinity, f: -Infinity, rows: [], pl: {}, ac: {}, rm: {} });
+      const act = r[3] > 0 ? r[3] : Math.max(0, r[2] - r[4]);
+      g.tq += r[2]; g.aq += act; g.rq += r[4]; g.cost += r[6]; g.acts.add(r[0]); g.rows.push(i);
       if (r[7] !== null) g.s = Math.min(g.s, r[7]); if (r[8] !== null) g.f = Math.max(g.f, r[8]);
+      const bs = a.bs ?? (r[7] !== null ? r[7] * DAY : null), bf = a.bf ?? (r[8] !== null ? r[8] * DAY : null);
+      if (r[2] > 0 && bs !== null && bf !== null) SX.spread(g.pl, r[2], bs, bf);
+      if (act > 0) { const as = a.as ?? Math.min(dd, bs ?? dd); SX.spread(g.ac, act, as, Math.max(as, Math.min(a.af ?? dd, dd))); }
+      if (r[4] > 0 && r[7] !== null && r[8] !== null) SX.spread(g.rm, r[4], r[7] * DAY, r[8] * DAY, dd);
     }));
+    const ddDay = dd / DAY;
     return Object.values(by).map(g => {
-      // remaining spread by month → busiest month crew (labour / equipment hours ÷ 10 h ÷ working days)
-      const m = monthly(g.rows);
-      const peak = Math.max(0, ...Object.entries(m).map(([k, h]) => h / (HPD * daysIn(k) * WD)));
-      const remDays = g.f > dd ? (g.f - Math.max(dd, g.s)) + 1 : 0;
-      return { ...g, n: g.acts.size, avgCrew: g.k !== 'M' && remDays > 0 ? g.rq / (HPD * remDays * WD) : null, peakCrew: g.k !== 'M' ? peak : null, months: m };
+      const peak = Math.max(0, ...Object.entries(g.rm).map(([k, h]) => h / (HPD * workDays(k))));
+      const remDays = g.f > ddDay ? (g.f - Math.max(ddDay, g.s)) + 1 : 0;
+      return { ...g, n: g.acts.size, avgCrew: g.k !== 'M' && remDays > 0 ? g.rq / (HPD * remDays * WD) : null, peakCrew: g.k !== 'M' ? peak : null };
     });
   }
-  const daysIn = k => new Date(Date.UTC(+k.slice(0, 4), +k.slice(5, 7), 0)).getUTCDate();
-  function monthly(rows) {
-    const S = SX.S, dd = SX.X.dd, out = {};
-    rows.forEach(i => { const r = S.ra[i]; if (r[4] > 0 && r[7] !== null && r[8] !== null) SX.spread(out, r[4], r[7] * DAY, r[8] * DAY, dd); });
-    return out;
-  }
+  // value of a monthly map entry in the chosen unit: hours or days (10 h), per working day or month total
+  const conv = (h, k, unit, per) => { let v = unit === 'd' ? h / HPD : h; return per === 'day' ? v / workDays(k) : v; };
+  const uLabel = (kind, unit, per) => (unit === 'd' ? (kind === 'E' ? 'equipment-days' : 'man-days') : 'hours') + (per === 'day' ? ' per working day' : ' per month');
+
   function renderResources() {
     const bar = $('.xf-bar[data-xf="resources"]'), host = $('#rsBody');
     if (!host) return;
@@ -308,31 +339,109 @@
     filterBar(bar);
     if (!SX.S.ra) { host.innerHTML = '<div class="card empty"><h3>This programme file has no resource data</h3><p>Re-import the XER (Import tab) to add it.</p></div>'; return; }
     const list = selection();
+    rsList = list;
     rsAgg = aggregate(list);
     const sum = k => rsAgg.filter(g => g.k === k);
     const hrs = (k, f) => sum(k).reduce((s, g) => s + g[f], 0);
-    host.innerHTML = `<div class="xf-sum muted">${esc(filterLabel())} — ${list.length.toLocaleString()} activities · resources assigned in P6</div>
+    const codes = k => sum(k).sort((a, b) => b.tq - a.tq).map(g => g.code).join(', ');
+    host.innerHTML = refBlock(list, `labour codes: ${esc(codes('L')) || '—'} · equipment codes: ${esc(codes('E')) || '—'}`) + `
       <div class="kpis">
-        ${K('Labour', `${sum('L').length} trades`, `${fmt(hrs('L', 'tq'), 0)} h budget · ${fmt(hrs('L', 'rq'), 0)} h remaining`)}
-        ${K('Labour spent', fmtP(hrs('L', 'tq') ? (hrs('L', 'tq') - hrs('L', 'rq')) / hrs('L', 'tq') * 100 : 0, 1), 'Budget hours not remaining')}
-        ${K('Equipment', `${sum('E').length} types`, `${fmt(hrs('E', 'tq'), 0)} h budget · ${fmt(hrs('E', 'rq'), 0)} h remaining`)}
+        ${K('Labour', `${sum('L').length} trades`, `${fmt(hrs('L', 'tq'), 0)} h budget · ${fmt(hrs('L', 'tq') / HPD, 0)} man-days`)}
+        ${K('Labour actual', fmt(hrs('L', 'aq'), 0) + '<small>h</small>', `${fmtP(hrs('L', 'tq') ? hrs('L', 'aq') / hrs('L', 'tq') * 100 : 0, 1)} of budget · ${fmt(hrs('L', 'aq') / HPD, 0)} man-days`)}
+        ${K('Labour remaining', fmt(hrs('L', 'rq'), 0) + '<small>h</small>', `${fmt(hrs('L', 'rq') / HPD, 0)} man-days`)}
+        ${K('Equipment', `${sum('E').length} types`, `${fmt(hrs('E', 'aq'), 0)} h actual · ${fmt(hrs('E', 'rq'), 0)} h remaining`)}
         ${K('Materials', `${sum('M').length} items`, 'Quantities in the P6 units')}
         ${K('Resource cost (P6)', fmtM(rsAgg.reduce((s, g) => s + g.cost, 0)) + '<small>SAR</small>', 'Budget cost on the assignments')}
       </div>
-      <div class="card"><div class="card-h"><h3>Remaining demand by month</h3><div class="seg" id="rsChartKind"><button data-k="L">Labour (crew/day)</button><button data-k="E">Equipment (units/day)</button></div></div><div class="chart-box tall"><canvas id="rsMonthly"></canvas></div></div>
+      <div class="card"><div class="card-h"><h3>Manpower &amp; equipment S-curve</h3>
+        <div class="g-toolbar" style="margin:0">
+          <div class="seg" id="rcK"><button data-v="L">Labour</button><button data-v="E">Equipment</button></div>
+          <select id="rcRes"></select>
+          <div class="seg" id="rcU"><button data-v="h">Hours</button><button data-v="d">Days (10 h)</button></div>
+        </div></div>
+        <div class="grid g-1-1 inner"><div class="chart-box tall"><canvas id="rsCurve"></canvas></div><div class="chart-box tall"><canvas id="rsHist"></canvas></div></div>
+        <p class="muted small" id="rcNote"></p></div>
+      <div class="card"><div class="card-h"><h3>Monthly distribution</h3>
+        <div class="g-toolbar" style="margin:0">
+          <div class="seg" id="rmM"><button data-v="ac">Actual</button><button data-v="rm">Remaining</button><button data-v="fc">Actual + remaining</button><button data-v="pl">Planned (baseline)</button></div>
+          <div class="seg" id="rmP"><button data-v="day">Per day</button><button data-v="month">Month total</button></div>
+          <button class="btn ghost" id="rmCsv">⬇ CSV</button>
+        </div></div>
+        <div id="rsMatrix"></div></div>
       <div class="card"><div class="card-h"><h3>Resources on the selected activities</h3>
         <div class="g-toolbar" style="margin:0"><div class="seg" id="rsKind"><button data-k="">All</button><button data-k="L">Labour</button><button data-k="E">Equipment</button><button data-k="M">Material</button></div>
         <input type="search" id="rsQ" placeholder="Search resource…" value="${esc(RS.q)}"><button class="btn ghost" id="rsCsv">⬇ CSV</button></div></div>
         <div id="rsTable"></div>
-        <p class="muted small">Crew/day = remaining hours ÷ 10 h ÷ working days (6-day week). Busiest month uses the remaining hours spread over each assignment's remaining dates.</p></div>`;
+        <p class="muted small">Actual = P6 actual units; where none are booked (as in these files) it is budget − remaining, the same as P6 shows. Days = hours ÷ 10 h. Per day = ÷ working days (6-day week). Crew/day = remaining hours ÷ 10 h ÷ working days.</p></div>`;
     $$('#rsKind button').forEach(b => { b.classList.toggle('on', b.dataset.k === RS.kind); b.onclick = () => { RS.kind = b.dataset.k; renderRsTable(); $$('#rsKind button').forEach(x => x.classList.toggle('on', x === b)); }; });
     $('#rsQ').oninput = e => { RS.q = e.target.value; renderRsTable(); };
     $('#rsCsv').onclick = () => csvDl('p6-resources.csv', ['Type', 'Code', 'Resource', 'Unit', 'Activities', 'Budget qty', 'Actual qty', 'Remaining qty', 'Budget cost (SAR)', 'Avg crew/day (remaining)', 'Busiest month crew/day', 'First start', 'Last finish'],
       rsRows().map(g => [KIND[g.k], g.code, g.name, g.u, g.n, g.tq.toFixed(1), g.aq.toFixed(1), g.rq.toFixed(1), Math.round(g.cost), g.avgCrew === null ? '' : g.avgCrew.toFixed(1), g.peakCrew === null ? '' : g.peakCrew.toFixed(1), ds(g.s * DAY), ds(g.f * DAY)]));
+    const seg = (id, key, fn) => $$('#' + id + ' button').forEach(b => { b.classList.toggle('on', b.dataset.v === RS[key]); b.onclick = () => { RS[key] = b.dataset.v; $$('#' + id + ' button').forEach(x => x.classList.toggle('on', x === b)); fn(); }; });
+    seg('rcK', 'ck', () => { RS.cres = ''; fillResSelect(); drawCurves(); drawMatrix(); });
+    seg('rcU', 'unit', () => { drawCurves(); drawMatrix(); });
+    seg('rmM', 'metric', drawMatrix);
+    seg('rmP', 'mper', drawMatrix);
+    $('#rcRes').onchange = e => { RS.cres = e.target.value; drawCurves(); };
+    $('#rmCsv').onclick = matrixCsv;
+    fillResSelect();
     renderRsTable();
-    const kindChart = RS.chartKind || 'L';
-    $$('#rsChartKind button').forEach(b => { b.classList.toggle('on', b.dataset.k === kindChart); b.onclick = () => { RS.chartKind = b.dataset.k; drawRsChart(); $$('#rsChartKind button').forEach(x => x.classList.toggle('on', x === b)); }; });
-    drawRsChart();
+    drawCurves();
+    drawMatrix();
+  }
+  function fillResSelect() {
+    const gs = rsAgg.filter(g => g.k === RS.ck).sort((a, b) => b.tq - a.tq);
+    if (RS.cres && !gs.some(g => g.code === RS.cres)) RS.cres = '';
+    $('#rcRes').innerHTML = `<option value="">All ${RS.ck === 'L' ? 'labour' : 'equipment'} (${gs.length})</option>` + gs.map(g => `<option value="${esc(g.code)}" ${g.code === RS.cres ? 'selected' : ''}>${esc(g.code)} — ${esc(g.name)}</option>`).join('');
+  }
+  function monthKeys(gs, keys) { return [...new Set(gs.flatMap(g => keys.flatMap(k => Object.keys(g[k]))))].sort(); }
+  function drawCurves() {
+    const gs = rsAgg.filter(g => g.k === RS.ck && (!RS.cres || g.code === RS.cres));
+    const months = monthKeys(gs, ['pl', 'ac', 'rm']);
+    const cur = SX.mk(SX.X.dd), base = A.baseOpts;
+    const tot = (key, k) => gs.reduce((s, g) => s + (g[key][k] || 0), 0);
+    const u = RS.unit, div = u === 'd' ? HPD : 1;
+    let cp = 0, ca = 0, cf = 0, started = false;
+    const P = [], Ac = [], F = [];
+    months.forEach(k => {
+      cp += tot('pl', k); ca += tot('ac', k); P.push(+(cp / div).toFixed(1));
+      Ac.push(k <= cur ? +(ca / div).toFixed(1) : null);
+      if (k >= cur) { if (!started) { cf = ca; started = true; } cf += tot('rm', k); F.push(+(cf / div).toFixed(1)); } else F.push(null);
+    });
+    const name = RS.cres ? (gs[0] ? gs[0].name : RS.cres) : (RS.ck === 'L' ? 'all labour' : 'all equipment');
+    const unitTxt = u === 'd' ? (RS.ck === 'E' ? 'equipment-days' : 'man-days') : 'hours';
+    mkChart('rsCurve', { type: 'line', data: { labels: months.map(SX.monthLabel), datasets: [
+      { label: 'Planned (baseline)', data: P, borderColor: col('--s2'), borderDash: [6, 4], borderWidth: 2, pointRadius: 0, tension: .3 },
+      { label: 'Actual', data: Ac, borderColor: col('--s1'), borderWidth: 2.5, pointRadius: 0, tension: .3 },
+      { label: 'Forecast (actual + remaining)', data: F, borderColor: col('--s3'), borderWidth: 2.5, pointRadius: 0, tension: .3 }] },
+      options: base({ scales: { x: base().scales.x, y: { ...base().scales.y, ticks: { color: col('--text-2'), callback: v => fmtM(v).replace(' M', 'M').replace(' K', 'K') } } }, plugins: { ...base().plugins, title: { display: true, text: `Cumulative ${unitTxt} — ${name}`, color: col('--text-2'), align: 'start' }, tooltip: { ...base().plugins.tooltip, callbacks: { label: x => `${x.dataset.label}: ${fmt(x.parsed.y, 0)} ${unitTxt}` } } } }) });
+    const per = k => u === 'd' ? workDays(k) * HPD : workDays(k);   // → crew per day (days unit) or hours per day
+    mkChart('rsHist', { type: 'bar', data: { labels: months.map(SX.monthLabel), datasets: [
+      { label: 'Actual', data: months.map(k => +(tot('ac', k) / per(k)).toFixed(1)), backgroundColor: col('--s1'), stack: 's', maxBarThickness: 26 },
+      { label: 'Remaining', data: months.map(k => +(tot('rm', k) / per(k)).toFixed(1)), backgroundColor: col('--s3'), stack: 's', maxBarThickness: 26 },
+      { label: 'Planned (baseline)', type: 'line', data: months.map(k => +(tot('pl', k) / per(k)).toFixed(1)), borderColor: col('--s2'), borderDash: [6, 4], borderWidth: 2, pointRadius: 0 }] },
+      options: base({ scales: { x: { ...base().scales.x, stacked: true }, y: { ...base().scales.y, stacked: true } }, plugins: { ...base().plugins, title: { display: true, text: `Per working day — ${u === 'd' ? (RS.ck === 'E' ? 'equipment on site' : 'crew size (persons)') : 'hours'} — ${name}`, color: col('--text-2'), align: 'start' }, tooltip: { ...base().plugins.tooltip, callbacks: { label: x => `${x.dataset.label}: ${fmt(x.parsed.y, 1)} ${u === 'd' ? (RS.ck === 'E' ? 'units' : 'persons') : 'h'}/day` } } } }) });
+    $('#rcNote').textContent = `Planned ${fmt(gs.reduce((s, g) => s + g.tq, 0) / div, 0)} · actual ${fmt(gs.reduce((s, g) => s + g.aq, 0) / div, 0)} · remaining ${fmt(gs.reduce((s, g) => s + g.rq, 0) / div, 0)} ${unitTxt}. Days unit = hours ÷ 10; per working day = ÷ (calendar days × 6/7).`;
+  }
+  let matrix = null;
+  function drawMatrix() {
+    const gs = rsAgg.filter(g => g.k === RS.ck).sort((a, b) => b.tq - a.tq);
+    const key = RS.metric, u = RS.unit, per = RS.mper;
+    const val = (g, k) => key === 'fc' ? (g.ac[k] || 0) + (g.rm[k] || 0) : (g[key][k] || 0);
+    const months = monthKeys(gs, key === 'fc' ? ['ac', 'rm'] : [key]).filter(k => gs.some(g => val(g, k) > 0));
+    const cell = (h, k) => { if (!(h > 0)) return ''; const v = conv(h, k, u, per), dp = per === 'day' ? 1 : 0; return v < (dp ? .05 : .5) ? (dp ? '<0.1' : '<1') : fmt(v, dp); };
+    const cur = SX.mk(SX.X.dd);
+    matrix = { gs, months, val, u, per, key };
+    const metricTxt = { ac: 'Actual', rm: 'Remaining', fc: 'Actual + remaining', pl: 'Planned (baseline)' }[key];
+    $('#rsMatrix').innerHTML = !months.length ? '<p class="muted">Nothing to show for this choice.</p>' : `<p class="muted small">${metricTxt} — ${uLabel(RS.ck, u, per)} · ${RS.ck === 'L' ? 'labour' : 'equipment'} · change the unit (hours / days) in the S-curve card above</p>
+      <div class="table-wrap tall"><table class="tbl mtx"><thead><tr><th>Resource</th>${months.map(k => `<th class="n ${k === cur ? 'cur' : ''}">${SX.monthLabel(k)}</th>`).join('')}<th class="n">Total ${u === 'd' ? 'days' : 'h'}</th></tr></thead><tbody>` +
+      gs.map(g => { const t = months.reduce((s, k) => s + val(g, k), 0); return `<tr class="click" data-rsrc="${g.ri}"><td><b>${esc(g.code)}</b> <span class="muted small">${esc(g.name)}</span></td>${months.map(k => `<td class="n ${k === cur ? 'cur' : ''}">${cell(val(g, k), k)}</td>`).join('')}<td class="n"><b>${fmt(u === 'd' ? t / HPD : t, 0)}</b></td></tr>`; }).join('') +
+      `</tbody><tfoot><tr><td>Total</td>${months.map(k => `<td class="n">${cell(gs.reduce((s, g) => s + val(g, k), 0), k)}</td>`).join('')}<td class="n">${fmt(gs.reduce((s, g) => s + months.reduce((x, k) => x + val(g, k), 0), 0) / (u === 'd' ? HPD : 1), 0)}</td></tr></tfoot></table></div>`;
+  }
+  function matrixCsv() {
+    if (!matrix) return;
+    const { gs, months, val, u, per, key } = matrix;
+    csvDl(`resources-${key}-${u === 'd' ? 'days' : 'hours'}-${per}.csv`, ['Code', 'Resource', ...months.map(SX.monthLabel)], gs.map(g => [g.code, g.name, ...months.map(k => { const h = val(g, k); return h > 0 ? conv(h, k, u, per).toFixed(per === 'day' ? 2 : 1) : ''; })]));
   }
   function rsRows() {
     const q = RS.q.trim().toLowerCase();
@@ -343,30 +452,19 @@
     const rows = rsRows().sort((x, y) => ((x[k] ?? -1) > (y[k] ?? -1) ? 1 : (x[k] ?? -1) < (y[k] ?? -1) ? -1 : 0) * d);
     const cols = [['k', 'Type'], ['code', 'Code'], ['name', 'Resource'], ['u', 'Unit'], ['n', 'Activities', 1], ['tq', 'Budget', 1], ['aq', 'Actual', 1], ['rq', 'Remaining', 1], ['spent', 'Spent', 1], ['avgCrew', 'Avg crew/day', 1], ['peakCrew', 'Busiest month /day', 1], ['s', 'First start'], ['f', 'Last finish'], ['cost', 'Cost (SAR)', 1]];
     $('#rsTable').innerHTML = `<div class="table-wrap tall"><table class="tbl"><thead><tr>${cols.map(([key, l, n]) => `<th class="${n ? 'n' : ''}" data-rsort="${key}">${l}${RS.sort === key ? (RS.dir > 0 ? ' ▲' : ' ▼') : ''}</th>`).join('')}</tr></thead><tbody>` +
-      (rows.map(g => `<tr class="click" data-rsrc="${g.ri}"><td>${KIND[g.k]}</td><td><b>${esc(g.code)}</b></td><td>${esc(g.name)}</td><td>${esc(g.u)}</td><td class="n">${g.n}</td><td class="n">${fmt(g.tq, 0)}</td><td class="n">${fmt(g.aq, 0)}</td><td class="n"><b>${fmt(g.rq, 0)}</b></td><td class="n">${g.tq ? fmtP((g.tq - g.rq) / g.tq * 100, 0) : '—'}</td><td class="n">${g.avgCrew === null ? '—' : fmt(g.avgCrew, 1)}</td><td class="n">${g.peakCrew === null ? '—' : fmt(g.peakCrew, 1)}</td><td>${fd(g.s * DAY)}</td><td>${fd(g.f * DAY)}</td><td class="n">${g.cost ? fmt(g.cost, 0) : '—'}</td></tr>`).join('') || `<tr><td colspan="${cols.length}" class="muted">No resources on these activities</td></tr>`) + '</tbody></table></div>';
+      (rows.map(g => `<tr class="click" data-rsrc="${g.ri}"><td>${KIND[g.k]}</td><td><b>${esc(g.code)}</b></td><td>${esc(g.name)}</td><td>${esc(g.u)}</td><td class="n">${g.n}</td><td class="n">${fmt(g.tq, 0)}</td><td class="n">${fmt(g.aq, 0)}</td><td class="n"><b>${fmt(g.rq, 0)}</b></td><td class="n">${g.tq ? fmtP(g.aq / g.tq * 100, 0) : '—'}</td><td class="n">${g.avgCrew === null ? '—' : fmt(g.avgCrew, 1)}</td><td class="n">${g.peakCrew === null ? '—' : fmt(g.peakCrew, 1)}</td><td>${fd(g.s * DAY)}</td><td>${fd(g.f * DAY)}</td><td class="n">${g.cost ? fmt(g.cost, 0) : '—'}</td></tr>`).join('') || `<tr><td colspan="${cols.length}" class="muted">No resources on these activities</td></tr>`) + '</tbody></table></div>';
     $$('#rsTable th[data-rsort]').forEach(th => th.onclick = () => { const s = th.dataset.rsort; RS.dir = RS.sort === s ? -RS.dir : -1; RS.sort = s; renderRsTable(); });
-  }
-  function drawRsChart() {
-    const kind = RS.chartKind || 'L';
-    const groups = rsAgg.filter(g => g.k === kind).sort((a, b) => b.rq - a.rq);
-    const top = groups.slice(0, 6), rest = groups.slice(6);
-    const keys = [...new Set(groups.flatMap(g => Object.keys(g.months)))].sort().slice(0, 36);
-    const perDay = (m, k) => (m[k] || 0) / (HPD * daysIn(k) * WD);
-    const pal = ['--s1', '--s2', '--s3', '--s4', '--s1', '--s2'].map(col);
-    const ds_ = top.map((g, i) => ({ label: g.name, data: keys.map(k => +perDay(g.months, k).toFixed(1)), backgroundColor: pal[i] + (i >= 4 ? '99' : ''), stack: 's', maxBarThickness: 28 }));
-    if (rest.length) ds_.push({ label: `Other (${rest.length})`, data: keys.map(k => +rest.reduce((s, g) => s + perDay(g.months, k), 0).toFixed(1)), backgroundColor: col('--muted'), stack: 's', maxBarThickness: 28 });
-    const base = A.baseOpts;
-    mkChart('rsMonthly', { type: 'bar', data: { labels: keys.map(SX.monthLabel), datasets: ds_ },
-      options: base({ scales: { x: { ...base().scales.x, stacked: true }, y: { ...base().scales.y, stacked: true } }, plugins: { ...base().plugins, tooltip: { ...base().plugins.tooltip, callbacks: { label: x => `${x.dataset.label}: ${fmt(x.parsed.y, 1)} /day` } } } }) });
   }
   function rsDetail(ri) {
     const g = rsAgg.find(x => x.ri === ri), S = SX.S, X = SX.X;
     if (!g) return { title: 'Resource', body: '' };
     const rows = g.rows.map(i => S.ra[i]).sort((a, b) => b[4] - a[4] || b[2] - a[2]);
+    const months = monthKeys([g], ['pl', 'ac', 'rm']), lab = g.k !== 'M';
     return {
       title: `${esc(g.code)} — ${esc(g.name)}`, sub: `${KIND[g.k]} · ${esc(filterLabel())}`,
-      body: `<div class="dtiles">${[['Activities', g.n], ['Budget', fmt(g.tq, 0) + ' ' + esc(g.u)], ['Actual', fmt(g.aq, 0)], ['Remaining', fmt(g.rq, 0)], ['Avg crew/day (remaining)', g.avgCrew === null ? '—' : fmt(g.avgCrew, 1)], ['Busiest month /day', g.peakCrew === null ? '—' : fmt(g.peakCrew, 1)], ['First start → last finish', fd(g.s * DAY) + ' → ' + fd(g.f * DAY)], ['Budget cost', g.cost ? 'SAR ' + fmt(g.cost, 0) : '—']].map(([l, v]) => `<div class="dtile"><div class="lbl">${l}</div><div class="v">${v}</div></div>`).join('')}</div>` +
-        SX.tbl([['Activity'], ['WBS'], ['Status'], ['Budget', 1], ['Actual', 1], ['Remaining', 1], ['Units/h', 1], ['Start'], ['Finish']], rows.slice(0, 800).map(r => { const a = S.acts[r[0]]; return `<tr class="click" data-act="${esc(a.c)}"><td><b>${esc(a.c)}</b><div class="small muted">${esc(a.n)}</div></td><td class="small">${esc((X.W[a.w] || {}).name || '')}</td><td>${SX.stTag(a)}</td><td class="n">${fmt(r[2], 0)}</td><td class="n">${fmt(r[3], 0)}</td><td class="n"><b>${fmt(r[4], 0)}</b></td><td class="n">${r[5] || '—'}</td><td>${fd(r[7] * DAY)}</td><td>${fd(r[8] * DAY)}</td></tr>`; }))
+      body: `<div class="dtiles">${[['Activities', g.n], ['Budget', fmt(g.tq, 0) + ' ' + esc(g.u) + (lab ? ` · ${fmt(g.tq / HPD, 0)} days` : '')], ['Actual', fmt(g.aq, 0) + (lab ? ` · ${fmt(g.aq / HPD, 0)} days` : '')], ['Remaining', fmt(g.rq, 0) + (lab ? ` · ${fmt(g.rq / HPD, 0)} days` : '')], ['Avg crew/day (remaining)', g.avgCrew === null ? '—' : fmt(g.avgCrew, 1)], ['Busiest month /day', g.peakCrew === null ? '—' : fmt(g.peakCrew, 1)], ['First start → last finish', fd(g.s * DAY) + ' → ' + fd(g.f * DAY)], ['Budget cost', g.cost ? 'SAR ' + fmt(g.cost, 0) : '—']].map(([l, v]) => `<div class="dtile"><div class="lbl">${l}</div><div class="v">${v}</div></div>`).join('')}</div>` +
+        (lab ? `<h4 class="dsec">By month</h4>` + SX.tbl([['Month'], ['Planned h', 1], ['Actual h', 1], ['Remaining h', 1], ['Actual /day', 1], ['Remaining /day', 1], ['Planned /day', 1]], months.map(k => `<tr><td>${SX.monthLabel(k)}</td><td class="n">${fmt(g.pl[k] || 0, 0)}</td><td class="n">${fmt(g.ac[k] || 0, 0)}</td><td class="n">${fmt(g.rm[k] || 0, 0)}</td><td class="n">${fmt((g.ac[k] || 0) / HPD / workDays(k), 1)}</td><td class="n">${fmt((g.rm[k] || 0) / HPD / workDays(k), 1)}</td><td class="n">${fmt((g.pl[k] || 0) / HPD / workDays(k), 1)}</td></tr>`)) + '<p class="muted small">/day = persons (or units) per working day = hours ÷ 10 ÷ working days.</p>' : '') +
+        `<h4 class="dsec">Activities</h4>` + SX.tbl([['Activity'], ['WBS'], ['Status'], ['Budget', 1], ['Actual', 1], ['Remaining', 1], ['Units/h', 1], ['Start'], ['Finish']], rows.slice(0, 800).map(r => { const a = S.acts[r[0]]; return `<tr class="click" data-act="${esc(a.c)}"><td><b>${esc(a.c)}</b><div class="small muted">${esc(a.n)}</div></td><td class="small"><b>${esc((X.W[a.w] || {}).code || '')}</b> ${esc((X.W[a.w] || {}).name || '')}</td><td>${SX.stTag(a)}</td><td class="n">${fmt(r[2], 0)}</td><td class="n">${fmt(r[3] > 0 ? r[3] : Math.max(0, r[2] - r[4]), 0)}</td><td class="n"><b>${fmt(r[4], 0)}</b></td><td class="n">${r[5] || '—'}</td><td>${fd(r[7] * DAY)}</td><td>${fd(r[8] * DAY)}</td></tr>`; }))
     };
   }
 
@@ -378,6 +476,7 @@
     if (o) { open(o.dataset.xopen); return; }
     const g = e.target.closest('[data-go]');
     if (g) { A.showTab(g.dataset.go); return; }
+    if (e.target.closest('[data-refcsv]')) { const X = SX.X; csvDl('selection-activity-ids.csv', ['Activity ID', 'Activity', 'WBS code', 'WBS'], selection().map(a => [a.c, a.n, (X.W[a.w] || {}).code, (X.W[a.w] || {}).name])); return; }
     const r = e.target.closest('[data-rsrc]');
     if (r) A.Details.open(() => rsDetail(+r.dataset.rsrc));
   });
