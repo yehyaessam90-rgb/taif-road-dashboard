@@ -356,7 +356,7 @@
           <div class="click" data-tabgo="schedule"><span>Planned</span><b>${fmtP(P6.planPct)}</b></div>
           <div class="click" data-tabgo="schedule"><span>Actual</span><b>${fmtP(P6.actPct)}</b></div>
           <div class="click" data-tabgo="schedule"><span>Variance</span><b class="${v < 0 ? 'neg' : 'pos'}">${(v > 0 ? '+' : '') + v.toFixed(2)}%</b></div>
-          <div class="click" data-tabgo="forecast"><span>SPI</span><b>${P6.spi !== null ? P6.spi.toFixed(2) : '—'}</b>${spiBadge(P6.spi)}</div>
+          <div class="click" data-tabgo="explorer"><span>SPI</span><b>${P6.spi !== null ? P6.spi.toFixed(2) : '—'}</b>${spiBadge(P6.spi)}</div>
           <div class="click" data-tabgo="schedule"><span>Forecast finish</span><b>${fmtDate(P6.fFinish)}</b><em class="muted small">${slip > 0 ? '+' + slip + ' d vs baseline' : slip < 0 ? -slip + ' d early' : 'on baseline'}</em></div>
           <div class="click" data-tabgo="compare"><span>Programmes</span><b>Detailed vs Target</b><em class="muted small">compare ›</em></div>
           <div class="click" data-tabgo="junctions"><span>Junctions</span><b>J7 · J5 · J3 · J1</b><em class="muted small">progress & deck pours ›</em></div>
@@ -396,7 +396,7 @@
       kpi('Time elapsed', D.timePct !== null ? fmtP(D.timePct, 1) : '—', D.finish ? `${fmtDate(D.start)} → ${fmtDate(D.finish)}` : 'Set completion date in Project sheet', D.timePct),
       kpi('Last IPC value', fmtM(D.last?.work || 0) + '<small>SAR</small>', D.last ? `${fmtDate(D.last.from)} – ${fmtDate(D.last.to)}` : '')
     ].join('');
-    $('#scurveNote').textContent = hasPlan ? 'Planned vs actual, % of contract' : 'Load baseline (Import tab) to show planned curve';
+    if ($('#scurveNote')) $('#scurveNote').textContent = hasPlan ? 'Planned vs actual, % of contract' : 'Load baseline (Import tab) to show planned curve';
 
     const pctOf = a => a.map(v => v === null ? null : v / D.cv * 100);
     const physAct = months.map(k => { const r = D.perf.filter(x => x.date.slice(0, 7) === k && x.actual !== null).pop(); return r ? r.actual : null; });
@@ -451,7 +451,7 @@
     const physPct = D.lastPerf?.actual ?? null, physPlanPct = D.lastPerf?.planned ?? null;
     const physSpi = physPct !== null && physPlanPct ? physPct / physPlanPct : null;
     tagNext('#perfKpis', ['plan','fin','var','spi','phys','physspi']);
-    $('#perfKpis').innerHTML = [
+    if ($('#perfKpis')) $('#perfKpis').innerHTML = [
       kpi('Planned % (financial)', fmtP(D.planPct), hasPlan ? 'From baseline at data date' : 'Baseline not loaded', D.planPct),
       kpi('Earned % (financial)', fmtP(D.finPct), 'Certified work ÷ contract', D.finPct),
       kpi('Variance', D.planPct !== null ? fmtP(D.finPct - D.planPct) : '—', D.pvNow !== null ? `SAR ${fmtM(D.cumWork - D.pvNow)} (EV − PV)` : ''),
@@ -931,11 +931,24 @@
     }
     history.replaceState(null, '', location.pathname + location.hash);   // keep the key out of the address bar
   }
+  // old page names → Financial sub-section (bookmarks, saved tab, links inside the dashboard)
+  const FIN_SUB = { performance: 'summary', spending: 'spending', invoices: 'ipc', quantities: 'boq', forecast: 'cashflow' };
+  function showSub(sub) {
+    if (!$('#fin-' + sub)) sub = 'summary';
+    $$('#finSub button').forEach(b => b.classList.toggle('on', b.dataset.sub === sub));
+    $$('#tab-financial .subpanel').forEach(p => p.classList.toggle('on', p.id === 'fin-' + sub));
+    try { localStorage.setItem('trd_finsub', sub); } catch (e) { }
+    setTimeout(() => Object.values(Chart.instances || {}).forEach(c => { try { c.resize(); } catch (e) { } }), 30);
+  }
+  $$('#finSub button').forEach(b => b.onclick = () => showSub(b.dataset.sub));
+  try { const fs = localStorage.getItem('trd_finsub'); if (fs) showSub(fs); } catch (e) { }
   function showTab(name) {
+    if (FIN_SUB[name]) { showSub(FIN_SUB[name]); name = 'financial'; }
     if (name === 'import' && !isAdmin()) name = 'overview';
+    if (!$('#tab-' + name)) name = 'overview';
     $$('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
     $$('.panel').forEach(p => p.classList.toggle('active', p.id === 'tab-' + name));
-    Object.values(charts).forEach(c => c.resize());
+    Object.values(Chart.instances || {}).forEach(c => { try { c.resize(); } catch (e) { } });
     try { localStorage.setItem('trd_tab', name); } catch (e) { }
     if (window.APP && APP.onTab) APP.onTab(name);
   }
@@ -1023,6 +1036,6 @@
   }
   try { const th = localStorage.getItem('trd_theme'); if (th) document.documentElement.dataset.theme = th; } catch (e) { }
   $('#adminExit').onclick = () => { try { localStorage.removeItem('trd_admin'); } catch (e) { } document.documentElement.classList.remove('admin'); showTab('overview'); };
-  checkAdminLink().then(() => { try { const tb = localStorage.getItem('trd_tab'); if (tb && $('#tab-' + tb)) showTab(tb); } catch (e) { } });
+  checkAdminLink().then(() => { try { const tb = localStorage.getItem('trd_tab'); if (tb) showTab(tb); } catch (e) { } });
   boot();
 })();

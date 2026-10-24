@@ -409,6 +409,14 @@
 
   // hook for app.js: physical progress points from the reports
   window.WEEKLY = {
+    latest: () => {
+      const w = WEEKS[WEEKS.length - 1];
+      if (!w) return null;
+      const s = w.summary || {}, mp = w.manpower || {}, eq = w.equipment || {}, f = w.finish || {};
+      return { label: weekLabel(w), no: w.no, dated: w.progressDated || w.to, planned: s.planned, actual: s.actual, varWeek: s.varWeek, varLast: s.varLast,
+        wkPlan: (w.progress || [])[0]?.wkPlan, wkAct: (w.progress || [])[0]?.wkAct, forecastFinish: f.forecast, plannedFinish: f.planned,
+        manpower: mp.combinedAvg || mp.avg, equipment: eq.avg, rfiOpen: w.rfi?.open, risks: (w.risks || []).length };
+    },
     perfPoints: () => {
       const pts = [];
       WEEKS.forEach(w => {
@@ -726,6 +734,7 @@
     (local || []).forEach(w => { const p = WEEKS.find(x => key(x) === key(w)); if (!p || (w.imported || '') >= (p.imported || '')) upsert(w); });
     if (WEEKS.length) setStatus(`${WEEKS.length} weekly report(s) loaded${local && local.length ? ' (incl. local imports)' : ''}. Latest: <b>${esc(weekLabel(WEEKS[WEEKS.length - 1]))}</b>`);
     A.render(); render();
+    if (window.XPL) window.XPL.refresh();
   }
 
   wireImport();

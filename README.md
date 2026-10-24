@@ -42,3 +42,9 @@ Settings → Pages → *Deploy from a branch* → `main` / root → Save. The si
 - **Forecast to Date**: pick any future date (or a from–until window). For every activity: planned % (baseline), forecast % (update dates) and achievable % (limited by the site manpower / equipment against the P6 resource loading), with Achievable / At risk / Overstated flags, value in the period, resource coverage tables and weekly demand charts.
 - Site resources: `data/site-resources.json`, from the daily manpower & equipment sheet (Import → 5).
 - **Logic Check**: out-of-sequence links, SF links, open ends, dangling starts/finishes, leads, long lags, hard constraints — with the automatic correction for each. `downloads/TP_update_261016_logic-fixed.zip` = Target Plan update 16-Oct-26 with the corrections applied (import into P6 and reschedule).
+
+## Page structure (Oct 2026)
+- **Overview** — site progress only: P6 strip, physical S-curve with weekly-report actuals, latest weekly report, progress by WBS, junctions, look-ahead. No financial figures.
+- **P6 Explorer** — drill-down filter (WBS level by level + activity keywords such as `concrete, -bituminous`, status, lane, critical) → planned / actual / SPI / dates / value, breakdown by the next WBS level, progress curve and the full activity list (CSV).
+- **Resources** — same filter → every P6 resource on the selected activities (labour, equipment, material): budget / actual / remaining, crew per day, busiest month, monthly demand chart, per-resource activity list.
+- **Financial** — everything in SAR: Summary · Invoices (IPC) · Spending plan · Cash-flow forecast (P6) · BOQ & sections.

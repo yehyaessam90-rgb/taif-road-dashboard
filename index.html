@@ -12,7 +12,7 @@
   try { if (localStorage.getItem('trd_admin') === 'bb132136cba17058787561571dffaa8bfe3d15bac2e1d651b5f0fb7f76dfd34b') document.documentElement.classList.add('admin'); } catch (e) { }
 </script>
 <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="assets/styles.css?v=202610221215">
+<link rel="stylesheet" href="assets/styles.css?v=202610240835">
 <script>
   window.addEventListener('error', function (e) {
     var b = document.getElementById('jsErr');
@@ -20,8 +20,8 @@
     b.innerHTML = '⚠ The page did not load completely (' + (e.message || 'script error') + '). Press <b>Ctrl + F5</b> to reload the latest version.';
   });
 </script>
-<script src="assets/vendor/chart.umd.min.js?v=202610221215"></script>
-<script src="assets/vendor/xlsx.full.min.js?v=202610221215"></script>
+<script src="assets/vendor/chart.umd.min.js?v=202610240835"></script>
+<script src="assets/vendor/xlsx.full.min.js?v=202610240835"></script>
 </head>
 <body>
 <header class="topbar">
@@ -48,86 +48,25 @@
 
 <nav class="tabs" role="tablist">
   <button class="tab active" data-tab="overview">Overview</button>
-  <button class="tab" data-tab="performance">Performance</button>
-  <button class="tab" data-tab="spending">Spending Plan</button>
   <button class="tab" data-tab="schedule">Schedule &amp; Gantt</button>
+  <button class="tab" data-tab="explorer">P6 Explorer</button>
+  <button class="tab" data-tab="resources">Resources</button>
   <button class="tab" data-tab="junctions">Junctions</button>
-  <button class="tab" data-tab="forecast">Forecast</button>
-  <button class="tab" data-tab="outlook">Forecast to Date</button>
-  <button class="tab" data-tab="logic">Logic Check</button>
-  <button class="tab" data-tab="compare">Compare Programmes</button>
+  <button class="tab" data-tab="outlook">Forecast</button>
   <button class="tab" data-tab="weekly">Weekly Report</button>
-  <button class="tab" data-tab="quantities">Quantities (BOQ)</button>
-  <button class="tab" data-tab="invoices">Invoices (IPC)</button>
+  <button class="tab" data-tab="compare">Compare Programmes</button>
+  <button class="tab" data-tab="logic">Logic Check</button>
+  <button class="tab fin" data-tab="financial">Financial</button>
   <button class="tab import admin-only" data-tab="import">⇪ Import File</button>
 </nav>
 
 <div id="banner" class="banner hidden"></div>
 
 <main>
-  <!-- OVERVIEW -->
+  <!-- OVERVIEW — site progress only (P6 + weekly report); money lives on the Financial page -->
   <section class="panel active" id="tab-overview">
     <div id="p6Strip" class="p6strip hidden"></div>
-    <div class="kpis" id="kpis"></div>
-    <div class="grid g-2-1">
-      <div class="card" data-card="scurve">
-        <div class="card-h"><h3>Cumulative progress — S-curve</h3><span class="muted" id="scurveNote"></span></div>
-        <div class="chart-box tall"><canvas id="chScurve"></canvas></div>
-      </div>
-      <div class="card" data-card="cv">
-        <div class="card-h"><h3>Contract value consumed</h3></div>
-        <div class="donut-wrap"><canvas id="chDonut"></canvas><div class="donut-center" id="donutCenter"></div></div>
-        <ul class="mini-list" id="contractList"></ul>
-      </div>
-    </div>
-    <div class="grid g-1-1">
-      <div class="card" data-card="work">
-        <div class="card-h"><h3>Work done per IPC (SAR, excl. VAT)</h3></div>
-        <div class="chart-box"><canvas id="chMonthly"></canvas></div>
-      </div>
-      <div class="card" data-card="sections">
-        <div class="card-h"><h3>Top sections by value certified</h3></div>
-        <div class="chart-box"><canvas id="chTopSections"></canvas></div>
-      </div>
-    </div>
-  </section>
-
-  <!-- PERFORMANCE -->
-  <section class="panel" id="tab-performance">
-    <div class="kpis" id="perfKpis"></div>
-    <div class="grid g-1-1">
-      <div class="card" data-card="spi">
-        <div class="card-h"><h3>Planned vs Actual progress %</h3><span class="muted">Physical (Performance sheet) &amp; financial</span></div>
-        <div class="chart-box tall"><canvas id="chPerf"></canvas></div>
-      </div>
-      <div class="card" data-card="spi">
-        <div class="card-h"><h3>SPI trend</h3><span class="muted">Earned ÷ Planned (cumulative)</span></div>
-        <div class="chart-box tall"><canvas id="chSpi"></canvas></div>
-      </div>
-    </div>
-    <div class="card" data-card="sections">
-      <div class="card-h"><h3>Progress by section</h3><span class="muted">Cumulative certified ÷ contract amount</span></div>
-      <div class="table-wrap"><table class="tbl" id="tblSections"></table></div>
-    </div>
-  </section>
-
-  <!-- SPENDING -->
-  <section class="panel" id="tab-spending">
-    <div class="kpis" id="spendKpis"></div>
-    <div class="card" data-card="pv">
-      <div class="card-h"><h3>Spending plan — planned vs actual (cumulative, SAR excl. VAT)</h3><span class="muted" id="spendNote"></span></div>
-      <div class="chart-box tall"><canvas id="chSpendCum"></canvas></div>
-    </div>
-    <div class="grid g-1-1">
-      <div class="card" data-card="pv">
-        <div class="card-h"><h3>Monthly cash flow — planned vs actual</h3></div>
-        <div class="chart-box"><canvas id="chSpendMonthly"></canvas></div>
-      </div>
-      <div class="card" data-card="advance">
-        <div class="card-h"><h3>Advance payment recovery</h3></div>
-        <div class="chart-box"><canvas id="chAdvance"></canvas></div>
-      </div>
-    </div>
+    <div id="ovBody"></div>
   </section>
 
   <!-- SCHEDULE -->
@@ -159,52 +98,28 @@
     <div id="schedBody"></div>
   </section>
 
+  <!-- P6 EXPLORER -->
+  <section class="panel" id="tab-explorer">
+    <div class="xf-bar" data-xf="explorer"></div>
+    <div id="exBody"></div>
+  </section>
+
+  <!-- RESOURCES -->
+  <section class="panel" id="tab-resources">
+    <div class="xf-bar" data-xf="resources"></div>
+    <div id="rsBody"></div>
+  </section>
+
   <!-- JUNCTIONS -->
   <section class="panel" id="tab-junctions">
     <div id="juncBody"></div>
   </section>
 
-  <!-- FORECAST TO DATE -->
+  <!-- FORECAST (progress to any date) -->
   <section class="panel" id="tab-outlook">
     <div id="olCtl"></div>
     <div class="kpis" id="olKpis"></div>
     <div id="olBody"></div>
-  </section>
-
-  <!-- LOGIC CHECK -->
-  <section class="panel" id="tab-logic">
-    <div id="lgBody"></div>
-  </section>
-
-  <!-- COMPARE -->
-  <section class="panel" id="tab-compare">
-    <div id="cmpBody"></div>
-  </section>
-
-  <!-- FORECAST -->
-  <section class="panel" id="tab-forecast">
-    <div class="prog-bar"></div>
-    <div class="kpis" id="fcKpis"></div>
-    <div id="fcBody"></div>
-    <template id="fcTpl">
-      <div class="card">
-        <div class="card-h"><h3>Cost forecast — baseline vs update vs certified (cumulative, SAR excl. VAT)</h3><span class="muted">Click a month for the required activities</span></div>
-        <div class="chart-box tall"><canvas id="chFcCum"></canvas></div>
-      </div>
-      <div class="grid g-1-1">
-        <div class="card"><div class="card-h"><h3>Monthly value — coming months</h3></div><div class="chart-box"><canvas id="chFcMonthly"></canvas></div></div>
-        <div class="card"><div class="card-h"><h3>Performance forecast — cumulative %</h3></div><div class="chart-box"><canvas id="chFcPerf"></canvas></div></div>
-      </div>
-      <div class="card">
-        <div class="card-h"><h3>Coming months — planned vs forecast</h3>
-          <select id="fcN"><option value="3">Next 3 months</option><option value="6">Next 6 months</option><option value="12">Next 12 months</option><option value="24">Next 24 months</option></select></div>
-        <div class="table-wrap"><table class="tbl" id="fcTable"></table></div>
-      </div>
-      <div class="card">
-        <div class="card-h"><h3 id="fcNextTitle">Required work next month</h3><button class="btn" id="fcNextAll">All activities by WBS →</button></div>
-        <div class="table-wrap"><table class="tbl" id="fcNext"></table></div>
-      </div>
-    </template>
   </section>
 
   <!-- WEEKLY REPORT -->
@@ -218,38 +133,127 @@
     <div id="wkBody"></div>
   </section>
 
-  <!-- QUANTITIES -->
-  <section class="panel" id="tab-quantities">
-    <div class="kpis" id="qtyKpis"></div>
-    <div class="card" data-card="items">
-      <div class="card-h">
-        <h3>BOQ items — quantities &amp; amounts</h3>
-        <div class="filters">
-          <select id="fBill"><option value="">All bills</option></select>
-          <select id="fProg">
-            <option value="">All items</option>
-            <option value="active">With progress</option>
-            <option value="period">Progress this period</option>
-            <option value="none">No progress</option>
-          </select>
-          <input id="fSearch" type="search" placeholder="Search item / description…">
-        </div>
-      </div>
-      <div class="table-wrap tall"><table class="tbl" id="tblItems"></table></div>
-      <div class="muted small" id="itemsFoot"></div>
-    </div>
+  <!-- COMPARE -->
+  <section class="panel" id="tab-compare">
+    <div id="cmpBody"></div>
   </section>
 
-  <!-- INVOICES -->
-  <section class="panel" id="tab-invoices">
-    <div class="kpis" id="invKpis"></div>
-    <div class="card" data-card="work">
-      <div class="card-h"><h3>Project payment log</h3><span class="muted">SAR</span></div>
-      <div class="table-wrap"><table class="tbl" id="tblInvoices"></table></div>
+  <!-- LOGIC CHECK -->
+  <section class="panel" id="tab-logic">
+    <div id="lgBody"></div>
+  </section>
+
+  <!-- FINANCIAL — everything in SAR -->
+  <section class="panel" id="tab-financial">
+    <div class="subtabs" id="finSub">
+      <button data-sub="summary" class="on">Summary</button>
+      <button data-sub="ipc">Invoices (IPC)</button>
+      <button data-sub="spending">Spending plan</button>
+      <button data-sub="cashflow">Cash-flow forecast (P6)</button>
+      <button data-sub="boq">BOQ &amp; sections</button>
     </div>
-    <div class="card" data-card="net">
-      <div class="card-h"><h3>Invoice build-up (gross with VAT)</h3></div>
-      <div class="chart-box"><canvas id="chInvStack"></canvas></div>
+
+    <div class="subpanel on" id="fin-summary">
+      <div class="kpis" id="kpis"></div>
+      <div class="grid g-2-1">
+        <div class="card" data-card="work">
+          <div class="card-h"><h3>Work done per IPC (SAR, excl. VAT)</h3></div>
+          <div class="chart-box"><canvas id="chMonthly"></canvas></div>
+        </div>
+        <div class="card" data-card="cv">
+          <div class="card-h"><h3>Contract value consumed</h3></div>
+          <div class="donut-wrap"><canvas id="chDonut"></canvas><div class="donut-center" id="donutCenter"></div></div>
+          <ul class="mini-list" id="contractList"></ul>
+        </div>
+      </div>
+      <div class="grid g-1-1">
+        <div class="card" data-card="sections">
+          <div class="card-h"><h3>Top sections by value certified</h3></div>
+          <div class="chart-box"><canvas id="chTopSections"></canvas></div>
+        </div>
+        <div class="card" data-card="spi">
+          <div class="card-h"><h3>Financial SPI trend</h3><span class="muted">Certified ÷ planned value (cumulative)</span></div>
+          <div class="chart-box"><canvas id="chSpi"></canvas></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="subpanel" id="fin-ipc">
+    <div class="kpis" id="invKpis"></div>
+      <div class="card" data-card="work">
+        <div class="card-h"><h3>Project payment log</h3><span class="muted">SAR</span></div>
+        <div class="table-wrap"><table class="tbl" id="tblInvoices"></table></div>
+      </div>
+      <div class="card" data-card="net">
+        <div class="card-h"><h3>Invoice build-up (gross with VAT)</h3></div>
+        <div class="chart-box"><canvas id="chInvStack"></canvas></div>
+      </div>
+      <div class="card" data-card="advance">
+        <div class="card-h"><h3>Advance payment recovery</h3></div>
+        <div class="chart-box"><canvas id="chAdvance"></canvas></div>
+      </div>
+    </div>
+
+    <div class="subpanel" id="fin-spending">
+      <div class="kpis" id="spendKpis"></div>
+      <div class="card" data-card="pv">
+        <div class="card-h"><h3>Spending plan — planned vs certified (cumulative, SAR excl. VAT)</h3><span class="muted" id="spendNote"></span></div>
+        <div class="chart-box tall"><canvas id="chSpendCum"></canvas></div>
+      </div>
+      <div class="card" data-card="pv">
+        <div class="card-h"><h3>Monthly cash flow — planned vs certified</h3></div>
+        <div class="chart-box"><canvas id="chSpendMonthly"></canvas></div>
+      </div>
+    </div>
+
+    <div class="subpanel" id="fin-cashflow">
+    <div class="prog-bar"></div>
+      <div class="kpis" id="fcKpis"></div>
+      <div id="fcBody"></div>
+      <template id="fcTpl">
+        <div class="card">
+          <div class="card-h"><h3>Cost forecast — baseline vs update vs certified (cumulative, SAR excl. VAT)</h3><span class="muted">Click a month for the required activities</span></div>
+          <div class="chart-box tall"><canvas id="chFcCum"></canvas></div>
+        </div>
+        <div class="grid g-1-1">
+          <div class="card"><div class="card-h"><h3>Monthly value — coming months</h3></div><div class="chart-box"><canvas id="chFcMonthly"></canvas></div></div>
+          <div class="card"><div class="card-h"><h3>Performance forecast — cumulative %</h3></div><div class="chart-box"><canvas id="chFcPerf"></canvas></div></div>
+        </div>
+        <div class="card">
+          <div class="card-h"><h3>Coming months — planned vs forecast</h3>
+            <select id="fcN"><option value="3">Next 3 months</option><option value="6">Next 6 months</option><option value="12">Next 12 months</option><option value="24">Next 24 months</option></select></div>
+          <div class="table-wrap"><table class="tbl" id="fcTable"></table></div>
+        </div>
+        <div class="card">
+          <div class="card-h"><h3 id="fcNextTitle">Required work next month</h3><button class="btn" id="fcNextAll">All activities by WBS →</button></div>
+          <div class="table-wrap"><table class="tbl" id="fcNext"></table></div>
+        </div>
+      </template>
+    </div>
+
+    <div class="subpanel" id="fin-boq">
+      <div class="card" data-card="sections">
+        <div class="card-h"><h3>Certified progress by BOQ section</h3><span class="muted">Cumulative certified ÷ contract amount</span></div>
+        <div class="table-wrap"><table class="tbl" id="tblSections"></table></div>
+      </div>
+    <div class="kpis" id="qtyKpis"></div>
+      <div class="card" data-card="items">
+        <div class="card-h">
+          <h3>BOQ items — quantities &amp; amounts</h3>
+          <div class="filters">
+            <select id="fBill"><option value="">All bills</option></select>
+            <select id="fProg">
+              <option value="">All items</option>
+              <option value="active">With progress</option>
+              <option value="period">Progress this period</option>
+              <option value="none">No progress</option>
+            </select>
+            <input id="fSearch" type="search" placeholder="Search item / description…">
+          </div>
+        </div>
+        <div class="table-wrap tall"><table class="tbl" id="tblItems"></table></div>
+        <div class="muted small" id="itemsFoot"></div>
+      </div>
     </div>
   </section>
 
@@ -339,13 +343,14 @@
 </footer>
 
 <div id="tooltipHost"></div>
-<script src="data/default-data.js?v=202610221215"></script>
-<script src="assets/xer.js?v=202610221215"></script>
-<script src="assets/app.js?v=202610221215"></script>
-<script src="assets/schedule.js?v=202610221215"></script>
-<script src="assets/weekly.js?v=202610221215"></script>
-<script src="assets/logic.js?v=202610221215"></script>
-<script src="assets/outlook.js?v=202610221215"></script>
-<script src="assets/print.js?v=202610221215"></script>
+<script src="data/default-data.js?v=202610240835"></script>
+<script src="assets/xer.js?v=202610240835"></script>
+<script src="assets/app.js?v=202610240835"></script>
+<script src="assets/schedule.js?v=202610240835"></script>
+<script src="assets/weekly.js?v=202610240835"></script>
+<script src="assets/logic.js?v=202610240835"></script>
+<script src="assets/outlook.js?v=202610240835"></script>
+<script src="assets/explorer.js?v=202610240835"></script>
+<script src="assets/print.js?v=202610240835"></script>
 </body>
 </html>

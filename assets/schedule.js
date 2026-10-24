@@ -19,7 +19,7 @@
   const monthLabel = k => new Date(k + '-01T00:00:00Z').toLocaleDateString('en-GB', { month: 'short', year: '2-digit', timeZone: 'UTC' });
 
   // ---------------- XER → schedule ----------------
-  const TABLES = new Set(['PROJECT', 'PROJWBS', 'TASK', 'TASKRSRC', 'TASKPRED', 'CALENDAR', 'RSRC']);
+  const TABLES = new Set(['PROJECT', 'PROJWBS', 'TASK', 'TASKRSRC', 'TASKPRED', 'CALENDAR', 'RSRC', 'UMEASURE']);
   function readFile(text, label) {
     const t = XER.parseXer(text, TABLES);
     const tasks = t.TASK || [];
@@ -65,25 +65,27 @@
     tasks.forEach(r => { tcal[r.task_id] = hpd[r.clndr_id] || 8; });
     const rels = (t.TASKPRED || []).filter(r => byTid[r.task_id] && byTid[r.pred_task_id])
       .map(r => [byTid[r.pred_task_id], byTid[r.task_id], (r.pred_type || '').replace('PR_', ''), Math.round((parseFloat(r.lag_hr_cnt) || 0) / (tcal[r.task_id] || 8))]);
-    // labour & equipment still to be spent: [activity, resource, remaining hours, units per hour, start, finish]
+    // every resource assignment (labour, equipment, material): budget / actual / remaining
+    const units = {};
+    (t.UMEASURE || []).forEach(u => { units[u.unit_id] = u.unit_abbrev || u.unit_name || ''; });
     const rsrc = {};
-    (t.RSRC || []).forEach(r => { if (r.rsrc_type !== 'RT_Mat') rsrc[r.rsrc_id] = { s: r.rsrc_short_name, n: r.rsrc_name, k: r.rsrc_type === 'RT_Labor' ? 'L' : 'E' }; });
-    const res = [], rdict = {};
+    (t.RSRC || []).forEach(r => { rsrc[r.rsrc_id] = { s: r.rsrc_short_name, n: r.rsrc_name, k: r.rsrc_type === 'RT_Labor' ? 'L' : r.rsrc_type === 'RT_Equip' ? 'E' : 'M', u: units[r.unit_id] || (r.rsrc_type === 'RT_Mat' ? '' : 'h') }; });
+    const ra = [], rdict = {};
     (t.TASKRSRC || []).forEach(r => {
       const rs = rsrc[r.rsrc_id], a = tById[r.task_id];
-      if (!rs || !a || a.status === 'TK_Complete') return;
-      const q = parseFloat(r.remain_qty) || 0;
-      if (q <= 0) return;
-      const st = pd(r.restart_date) || a.rs || a.es || a.ts, fi = pd(r.reend_date) || a.re || a.ef || a.tf;
-      if (st === null || fi === null) return;
-      rdict[rs.s] = [rs.n, rs.k];
-      res.push([a.code, rs.s, Math.round(q), +(parseFloat(r.remain_qty_per_hr) || 0).toFixed(2), st, fi]);
+      if (!rs || !a) return;
+      const tq = parseFloat(r.target_qty) || 0, aq = (parseFloat(r.act_reg_qty) || 0) + (parseFloat(r.act_ot_qty) || 0), rq = a.status === 'TK_Complete' ? 0 : (parseFloat(r.remain_qty) || 0);
+      if (!tq && !aq && !rq) return;
+      const st = pd(r.restart_date) || pd(r.act_start_date) || pd(r.target_start_date) || a.as || a.es || a.ts;
+      const fi = pd(r.reend_date) || pd(r.act_end_date) || pd(r.target_end_date) || a.af || a.ef || a.tf;
+      rdict[rs.s] = [rs.n, rs.k, rs.u];
+      ra.push([a.code, rs.s, +tq.toFixed(2), +aq.toFixed(2), +rq.toFixed(2), +(parseFloat(r.remain_qty_per_hr) || parseFloat(r.target_qty_per_hr) || 0).toFixed(2), Math.round(parseFloat(r.target_cost) || 0), st === null ? null : Math.round(st / DAY), fi === null ? null : Math.round(fi / DAY)]);
     });
     return {
       proj: {
         name: proj.proj_short_name || '', dataDate: pd(proj.last_recalc_date) || pd(proj.next_data_date),
         start: pd(proj.plan_start_date), finish: pd(proj.scd_end_date) || pd(proj.plan_end_date)
-      }, wbs, acts, rels, res, rdict
+      }, wbs, acts, rels, ra, rdict
     };
   }
 
@@ -127,7 +129,10 @@
         update: U ? { file: files.u, name: U.proj.name, dataDate: U.proj.dataDate, start: U.proj.start, finish: U.proj.finish } : null,
         weighting: useCost ? 'cost' : 'duration', bac: acts.reduce((s, a) => s + a.wt, 0)
       },
-      wbs: ordered, acts, rels: cur.rels, res: cur.res || [], rdict: cur.rdict || {}
+      wbs: ordered, acts, rels: cur.rels,
+      // assignments: [activity index, resource index, budget qty, actual qty, remaining qty, units/h, budget cost, start day, finish day]
+      rl: Object.keys(cur.rdict || {}).map(k => [k, ...cur.rdict[k]]),
+      ra: (() => { const ai = {}; acts.forEach((a, i) => { ai[a.c] = i; }); const ri = {}; Object.keys(cur.rdict || {}).forEach((k, i) => { ri[k] = i; }); return (cur.ra || []).filter(r => ai[r[0]] !== undefined).map(r => [ai[r[0]], ri[r[1]], ...r.slice(2)]); })()
     };
   }
 
@@ -142,6 +147,15 @@
   const pending = { b: null, u: null, fb: '', fu: '' };
 
   function index() {
+    if (S.ra && S.rl) {
+      S.rdict = {}; S.rl.forEach(r => { S.rdict[r[0]] = [r[1], r[2], r[3]]; });
+      S.res = [];
+      S.ra.forEach(r => {
+        const a = S.acts[r[0]], rs = S.rl[r[1]];
+        if (!a || !rs || rs[2] === 'M' || r[4] <= 0 || a.st === 'Complete' || r[7] === null || r[8] === null) return;
+        S.res.push([a.c, rs[0], r[4], r[5], r[7] * DAY, r[8] * DAY]);
+      });
+    }
     const W = {};
     S.wbs.forEach(w => { W[w.id] = w; });
     const A_ = {};
@@ -269,16 +283,14 @@
     const slip = X.fFinish && X.bFinish ? Math.round((X.fFinish - X.bFinish) / DAY) : null;
     const K = (lbl, val, hint, key, bar) => `<div class="kpi" data-sk="${key}" tabindex="0"><div class="lbl">${lbl}</div><div class="val">${val}</div>${hint ? `<div class="hint">${hint}</div>` : ''}${bar !== undefined ? `<div class="bar"><i style="width:${Math.max(0, Math.min(100, bar))}%"></i></div>` : ''}</div>`;
     $('#schedKpis').innerHTML = [
-      K('Data date', fd(dd), (S.meta.update ? 'Update: ' + esc(S.meta.update.file || '') : 'Baseline only'), 'dates'),
-      K('Planned vs actual', `${fmtP(X.planPct, 1)} / ${fmtP(X.actPct, 1)}`, `Weighted by ${S.meta.weighting} · var ${fmtP(X.actPct - X.planPct, 1)}`, 'perf', X.actPct),
-      K('SPI (schedule)', spi ? spi.toFixed(2) : '—', spi ? (spi >= .95 ? '● On track' : spi >= .85 ? '▲ Slight delay' : '■ Behind plan') : '', 'perf'),
-      K('Forecast finish', fd(X.fFinish), slip !== null ? `Baseline ${fd(X.bFinish)} · ${slip > 0 ? '+' + slip + ' d late' : slip < 0 ? Math.abs(slip) + ' d early' : 'on baseline'}` : '', 'dates'),
       K('Activities', all.length.toLocaleString(), `✓ ${done} done · ▶ ${act} active · ○ ${ns} not started`, 'all', done / all.length * 100),
-      K('Look-ahead 4 wks', la.toLocaleString(), `${ach} achieved last 7 days · ${crit} critical`, 'lookahead')
+      K('Look-ahead 4 wks', la.toLocaleString(), 'To be worked in the next 4 weeks', 'lookahead'),
+      K('Achieved last 7 days', ach.toLocaleString(), 'Started or finished', 'achieved'),
+      K('Critical (TF ≤ 0)', crit.toLocaleString(), `${all.filter(a => !isDone(a) && (finVar(a) || 0) > 0).length.toLocaleString()} open activities late vs baseline`, 'critical')
     ].join('');
     $$('#schedKpis .kpi').forEach(k => k.onclick = () => {
       const key = k.dataset.sk;
-      if (key === 'lookahead' || key === 'all') { F.view = key; syncFilters(); drawGantt(); }
+      if (['lookahead', 'all', 'achieved', 'critical'].includes(key)) { F.view = key; syncFilters(); drawGantt(); }
       else if (key === 'perf') showTab('forecast');
       else openDates();
     });
@@ -1143,7 +1155,8 @@
     $('#schedExport').onclick = () => {
       const pid = $('#xerProg').value, P = prog(pid);
       if (!PS[pid]) return setStatus('Nothing to export for ' + esc(P.name) + ' yet.');
-      const blob = new Blob([JSON.stringify(PS[pid].S)], { type: 'application/json' });
+      const { res, rdict, ...pub } = PS[pid].S;   // res / rdict are rebuilt from ra / rl when loaded
+      const blob = new Blob([JSON.stringify(pub)], { type: 'application/json' });
       const l = document.createElement('a'); l.href = URL.createObjectURL(blob); l.download = P.out; l.click();
     };
     $('#schedClear').onclick = async () => { for (const p of PROGRAMS) await idbDel('schedule:' + p.id); await idbDel('schedule'); setStatus('Local schedules cleared — reloading the published ones…'); await boot(true); };
@@ -1176,11 +1189,11 @@
   // internals shared with outlook.js (forecast-to-date, resources, logic check)
   window.SCHEDX = {
     get S() { return S; }, get X() { return X; }, get active() { return ACTIVE; }, PS, PROGRAMS, prog, withProg, RAW,
-    wbsSet, wStats, isDone, isActive, isMs, finVar, critical, stTag, fd, ds, tbl, actDetail, wbsDetail, renderProgBars, spread, DAY,
+    wbsSet, wStats, isDone, isActive, isMs, finVar, critical, stTag, fd, ds, tbl, actDetail, wbsDetail, renderProgBars, spread, DAY, junctions: () => junctions(), mk, monthLabel,
     onChange: fn => LISTENERS.push(fn)
   };
   wireFilters();
   wireImport();
-  A.onTab = n => { if (n === 'schedule') { renderSchedule(); } if (n === 'forecast') renderForecast(); if (n === 'junctions') renderJunctions(); if (n === 'compare') renderCompare(); };
+  A.onTab = n => { if (n === 'schedule') { renderSchedule(); } if (n === 'forecast' || n === 'financial') renderForecast(); if (n === 'junctions') renderJunctions(); if (n === 'compare') renderCompare(); };
   A.whenReady(() => boot());
 })();
