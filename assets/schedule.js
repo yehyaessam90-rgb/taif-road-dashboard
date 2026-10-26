@@ -17,6 +17,46 @@
   const monthStart = t => { const d = new Date(t); return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1); };
   const addMonths = (t, n) => { const d = new Date(t); return Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + n, 1); };
   const monthLabel = k => new Date(k + '-01T00:00:00Z').toLocaleDateString('en-GB', { month: 'short', year: '2-digit', timeZone: 'UTC' });
+  // date + time ("2026-10-16 00:00" → ms) and minute of day
+  const pdt = s => { if (!s) return null; const m = /^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{1,2}):(\d{2}))?/.exec(s); return m ? Date.UTC(+m[1], +m[2] - 1, +m[3], +(m[4] || 0), +(m[5] || 0)) : null; };
+  const mod = s => { const m = /[ T](\d{1,2}):(\d{2})/.exec(s || ''); return m ? +m[1] * 60 + +m[2] : null; };
+  const WD = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const fdt = t => t === null || t === undefined ? '—' : WD[new Date(t).getUTCDay()] + ' ' + fd(t) + ' ' + new Date(t).toISOString().slice(11, 16);
+  // the Friday (00:00) of the week that ends at t — the weekly cut-off rule
+  const friday = t => { const d = Math.floor(t / DAY) * DAY, w = new Date(d).getUTCDay(); return w === 5 ? t : d - ((w - 5 + 7) % 7) * DAY; };
+
+  // ---------------- P6 calendars → working time ----------------
+  // clndr_data: weekdays 1 (Sun) … 7 (Sat) with (s|07:00|f|12:00) shifts; exceptions keyed by Excel serial day
+  function parseCal(data) {
+    const s = (data || '').replace(/[\x7f\s]/g, '');
+    const xi = s.indexOf('Exceptions()');
+    const w = [[], [], [], [], [], [], []], x = {};
+    const hm = t => { const p = t.split(':'); return +p[0] * 60 + +p[1]; };
+    const re = /\(0\|\|(\d+)\(([^()]*)\)/g;
+    let m, cur = null;
+    while ((m = re.exec(s))) {
+      const at = m[2];
+      if (/[sf]\|/.test(at)) {
+        const st = /s\|(\d{1,2}:\d{2})/.exec(at), fi = /f\|(\d{1,2}:\d{2})/.exec(at);
+        if (cur && st && fi) { const a = hm(st[1]); let b = hm(fi[1]); if (b <= a) b += 1440; cur.push([a, b]); }
+      } else if (xi >= 0 && m.index > xi) { const d = /d\|(\d+)/.exec(at); cur = d ? (x[+d[1] - 25569] = []) : null; }
+      else if (!at) { const n = +m[1]; cur = n >= 1 && n <= 7 ? w[n - 1] : null; }
+    }
+    return w.some(d => d.length) ? { w, x } : null;
+  }
+  // cumulative working minutes, pre-computed per calendar over the programme's date range
+  function calIndex(c, D0, D1) {
+    const iv = D => c.x[D] || c.w[((D + 4) % 7 + 7) % 7];
+    const pre = new Float64Array(D1 - D0 + 2);
+    for (let D = D0; D <= D1; D++) pre[D - D0 + 1] = pre[D - D0] + iv(D).reduce((s, p) => s + p[1] - p[0], 0);
+    return t => {
+      const D = Math.floor(t / DAY);
+      if (D < D0) return 0;
+      if (D > D1) return pre[D1 - D0 + 1];
+      const mi = (t - D * DAY) / 6e4;
+      return pre[D - D0] + iv(D).reduce((s, p) => s + Math.max(0, Math.min(mi, p[1]) - p[0]), 0);
+    };
+  }
 
   // ---------------- XER → schedule ----------------
   const TABLES = new Set(['PROJECT', 'PROJWBS', 'TASK', 'TASKRSRC', 'TASKPRED', 'CALENDAR', 'RSRC', 'UMEASURE']);
@@ -28,8 +68,8 @@
     tasks.forEach(r => { cnt[r.proj_id] = (cnt[r.proj_id] || 0) + 1; });
     const pid = Object.keys(cnt).sort((a, b) => cnt[b] - cnt[a])[0];
     const proj = (t.PROJECT || []).find(p => p.proj_id === pid) || {};
-    const hpd = {};
-    (t.CALENDAR || []).forEach(c => { hpd[c.clndr_id] = parseFloat(c.day_hr_cnt) || 8; });
+    const hpd = {}, cals = {};
+    (t.CALENDAR || []).forEach(c => { hpd[c.clndr_id] = parseFloat(c.day_hr_cnt) || 8; const p = parseCal(c.clndr_data); if (p) cals[c.clndr_id] = p; });
     const cost = {};
     (t.TASKRSRC || []).forEach(r => {
       if (r.proj_id && r.proj_id !== pid) return;
@@ -57,7 +97,8 @@
         ts: pd(r.target_start_date), tf: pd(r.target_end_date), es: pd(r.early_start_date), ef: pd(r.early_end_date),
         as: pd(r.act_start_date), af: pd(r.act_end_date), rs: pd(r.restart_date), re: pd(r.reend_date),
         dur: durH / h, rem: remH / h, tfl: r.total_float_hr_cnt === '' || r.total_float_hr_cnt === undefined ? null : (parseFloat(r.total_float_hr_cnt) || 0) / h,
-        pct, drv: r.driving_path_flag === 'Y', cb: c.b, ca: c.a, cr: c.r, cs: r.cstr_type || '', cd: pd(r.cstr_date)
+        pct, drv: r.driving_path_flag === 'Y', cb: c.b, ca: c.a, cr: c.r, cs: r.cstr_type || '', cd: pd(r.cstr_date),
+        m0: mod(r.target_start_date || r.early_start_date), m1: mod(r.target_end_date || r.early_end_date), cl: r.clndr_id
       });
     }
     const byTid = {}, tcal = {}, tById = {};
@@ -84,8 +125,9 @@
     return {
       proj: {
         name: proj.proj_short_name || '', dataDate: pd(proj.last_recalc_date) || pd(proj.next_data_date),
+        dataDateT: pdt(proj.last_recalc_date) ?? pdt(proj.next_data_date),
         start: pd(proj.plan_start_date), finish: pd(proj.scd_end_date) || pd(proj.plan_end_date)
-      }, wbs, acts, rels, ra, rdict
+      }, wbs, acts, rels, ra, rdict, cals
     };
   }
 
@@ -110,25 +152,40 @@
     (function walk(p) { (kids[p] || []).forEach(w => { ordered.push(w); walk(w.id); }); })('');
     const totalB = base.acts.reduce((s, a) => s + a.cb, 0);
     const useCost = totalB > 0;
+    // baseline calendar + time of day of each activity (planned % is measured in P6 working time); the most common value is kept once in meta
+    const bsrc = a => bmap[a.code] || a;
+    const mode = f => { const n = {}; cur.acts.forEach(a => { const k = f(bsrc(a)); n[k] = (n[k] || 0) + 1; }); return Object.keys(n).sort((x, y) => n[y] - n[x])[0]; };
+    const btKey = b => (b.m0 ?? 0) + ',' + (b.m1 ?? 1440);
+    const defBt = (mode(btKey) || '0,1440').split(',').map(Number), defCl = mode(b => b.cl || '') || '';
+    const calSrc = Object.assign({}, U ? U.cals : {}, B ? B.cals : {});
     const acts = cur.acts.map(a => {
       const b = bmap[a.code];
       const isMs = a.type === 'TT_Mile' || a.type === 'TT_FinMile';
       const bs = b ? (b.ts || b.es) : (a.ts || a.es), bf = b ? (b.tf || b.ef) : (a.tf || a.ef);
       const s = a.as || a.es || a.ts, f = a.af || a.ef || a.tf;
       const w = isMs || a.type === 'TT_LOE' ? 0 : useCost ? (b ? b.cb : a.cb) : (b ? b.dur : a.dur);
-      return {
+      const o = {
         c: a.code, n: a.name, w: a.wbs, t: a.type.replace('TT_', ''), st: a.status.replace('TK_', ''), bs, bf, s, f, as: a.as, af: a.af,
         d: +a.dur.toFixed(1), rd: +a.rem.toFixed(1), p: +a.pct.toFixed(1), tf: a.tfl === null ? null : +a.tfl.toFixed(1), dr: a.drv ? 1 : 0,
         wt: w, ac: a.ca, rc: a.cr, nb: b ? 0 : 1, cs: a.cs ? a.cs.replace('CS_', '') : undefined
       };
+      const sb = bsrc(a), bk = btKey(sb);
+      if (bk !== defBt.join(',')) o.bt = bk.split(',').map(Number);
+      if ((sb.cl || '') !== defCl) o.cl = sb.cl || '';
+      return o;
     });
+    const usedCals = new Set([defCl, ...acts.map(a => a.cl).filter(c => c !== undefined)]);
+    const calOut = {};
+    usedCals.forEach(id => { if (calSrc[id]) calOut[id] = calSrc[id]; });
     return {
       v: 1, created: new Date().toISOString(),
       meta: {
-        baseline: B ? { file: files.b, name: B.proj.name, dataDate: B.proj.dataDate, start: B.proj.start, finish: B.proj.finish } : null,
-        update: U ? { file: files.u, name: U.proj.name, dataDate: U.proj.dataDate, start: U.proj.start, finish: U.proj.finish } : null,
-        weighting: useCost ? 'cost' : 'duration', bac: acts.reduce((s, a) => s + a.wt, 0)
+        baseline: B ? { file: files.b, name: B.proj.name, dataDate: B.proj.dataDate, dataDateT: B.proj.dataDateT, start: B.proj.start, finish: B.proj.finish } : null,
+        update: U ? { file: files.u, name: U.proj.name, dataDate: U.proj.dataDate, dataDateT: U.proj.dataDateT, start: U.proj.start, finish: U.proj.finish } : null,
+        weighting: useCost ? 'cost' : 'duration', bac: acts.reduce((s, a) => s + a.wt, 0),
+        bt: defBt, cl: defCl
       },
+      cals: calOut,
       wbs: ordered, acts, rels: cur.rels,
       // assignments: [activity index, resource index, budget qty, actual qty, remaining qty, units/h, budget cost, start day, finish day]
       rl: Object.keys(cur.rdict || {}).map(k => [k, ...cur.rdict[k]]),
@@ -139,6 +196,8 @@
   // ---------------- state & storage ----------------
   let S = null;          // schedule model
   let X = null;          // derived indexes
+  // user cut-off (ms, any date + hour) — null = the XER data date on its Friday; kept in this browser, applies to both programmes
+  let CUT = (() => { try { const v = localStorage.getItem('trd_cutoff'); return v && isFinite(+v) ? +v : null; } catch (e) { return null; } })();
   const DB = 'trd_sched', STORE = 'kv';
   const idb = () => new Promise((res, rej) => { const r = indexedDB.open(DB, 1); r.onupgradeneeded = () => r.result.createObjectStore(STORE); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
   async function idbGet(k) { try { const d = await idb(); return await new Promise(r => { const q = d.transaction(STORE).objectStore(STORE).get(k); q.onsuccess = () => r(q.result); q.onerror = () => r(null); }); } catch (e) { return null; } }
@@ -162,11 +221,32 @@
     S.acts.forEach(a => { A_[a.c] = a; });
     const pred = {}, succ = {};
     (S.rels || []).forEach(r => { (succ[r[0]] = succ[r[0]] || []).push(r); (pred[r[1]] = pred[r[1]] || []).push(r); });
-    const dd = (S.meta.update || S.meta.baseline || {}).dataDate || Date.now();
+    // cut-off: the XER data date moved to its Friday, unless the user picked another date / hour
+    const mt = S.meta.update || S.meta.baseline || {};
+    const xerDD = mt.dataDateT ?? mt.dataDate ?? Date.now();
+    const friDD = friday(xerDD);
+    const dd = CUT !== null ? CUT : friDD;
     const cv = (A.M.project.cv || 0) + (A.M.project.co || 0);
     const k = S.meta.bac && cv ? cv / S.meta.bac : 1;  // weight → SAR
     const wbsPath = id => { const out = []; let w = W[id], g = 0; while (w && g++ < 40) { out.unshift(w); w = W[w.parent]; } return out; };
-    X = { W, A: A_, pred, succ, dd, k, cv, wbsPath, junctions: null };
+    // working-time clocks of the baseline calendars
+    let D0 = Infinity, D1 = -Infinity;
+    S.acts.forEach(a => { if (a.bs !== null && a.bs / DAY < D0) D0 = a.bs / DAY; if (a.bf !== null && a.bf / DAY > D1) D1 = a.bf / DAY; });
+    D0 = Math.floor(Math.min(D0, dd / DAY)) - 2; D1 = Math.floor(Math.max(D1, dd / DAY)) + 3660;
+    const clock = {};
+    Object.keys(S.cals || {}).forEach(id => { clock[id] = calIndex(S.cals[id], D0, D1); });
+    const defBt = S.meta.bt || [0, 1440], defCl = S.meta.cl || '';
+    // share of an activity's baseline (working) duration elapsed at instant t — P6 planned % / PV
+    const pf = (a, t) => {
+      if (a.bs === null || a.bf === null) return 0;
+      const bt = a.bt || defBt, t0 = a.bs + bt[0] * 6e4, t1 = a.bf + bt[1] * 6e4;
+      if (t >= t1) return 1;
+      if (t <= t0) return 0;
+      const c = clock[a.cl ?? defCl];
+      if (c) { const w0 = c(t0), tot = c(t1) - w0; if (tot > 0) return Math.max(0, Math.min(1, (c(t) - w0) / tot)); }
+      return (t - t0) / (t1 - t0);
+    };
+    X = { W, A: A_, pred, succ, dd, xerDD, friDD, custom: CUT !== null, calOK: Object.keys(clock).length > 0, pf, k, cv, wbsPath, junctions: null };
     curves();
   }
 
@@ -194,7 +274,7 @@
       if (!a.wt) return;
       spread(pv, a.wt, a.bs, a.bf);
       ev += a.wt * a.p / 100;
-      if (a.bs !== null && a.bf !== null) pvdd += a.wt * Math.max(0, Math.min(1, (dd - a.bs + DAY) / (a.bf - a.bs + DAY)));
+      pvdd += a.wt * X.pf(a, dd);
       if (a.p < 100) spread(fc, a.wt * (1 - a.p / 100), a.s ?? dd, a.f ?? dd, dd + DAY);
     });
     X.pv = pv; X.fc = fc; X.ev = ev; X.pvdd = pvdd;
@@ -212,7 +292,7 @@
     planMonthly: () => S ? Object.keys(X.pv).sort().map(k => ({ month: k + '-01', planned: X.pv[k] * X.k })) : [],
     perfPoint: () => S && S.meta.update ? { date: ds(X.dd), planned: +X.planPct.toFixed(2), actual: +X.actPct.toFixed(2), remarks: 'From P6 update ' + (S.meta.update.file || '') } : null,
     start: () => S ? ds(X.bStart) : '', finish: () => S ? ds(X.bFinish) : '',
-    status: () => S ? { prog: prog(ACTIVE) ? prog(ACTIVE).name : '', dataDate: ds(X.dd), planPct: X.planPct, actPct: X.actPct, spi: X.pvdd ? X.ev / X.pvdd : null, fFinish: ds(X.fFinish), bFinish: ds(X.bFinish), update: S.meta.update ? S.meta.update.file : '' } : null
+    status: () => S ? { prog: prog(ACTIVE) ? prog(ACTIVE).name : '', dataDate: ds(X.dd), cut: fdt(X.dd), custom: X.custom, planPct: X.planPct, actPct: X.actPct, spi: X.pvdd ? X.ev / X.pvdd : null, fFinish: ds(X.fFinish), bFinish: ds(X.bFinish), update: S.meta.update ? S.meta.update.file : '' } : null
   };
 
   // ---------------- status helpers ----------------
@@ -475,7 +555,7 @@
     const list = S.acts.filter(a => set.has(a.w));
     const wt = list.reduce((s, a) => s + a.wt, 0), ev = list.reduce((s, a) => s + a.wt * a.p / 100, 0);
     let pv = 0;
-    list.forEach(a => { if (a.wt && a.bs !== null && a.bf !== null) pv += a.wt * Math.max(0, Math.min(1, (X.dd - a.bs + DAY) / (a.bf - a.bs + DAY))); });
+    list.forEach(a => { if (a.wt) pv += a.wt * X.pf(a, X.dd); });
     const la = list.filter(a => !isDone(a) && a.s !== null && a.s <= X.dd + 28 * DAY && (a.f ?? a.s) >= X.dd);
     const late = list.filter(a => !isDone(a) && (finVar(a) || 0) > 0).sort((a, b) => finVar(b) - finVar(a));
     return {
@@ -508,7 +588,7 @@
     let wt = 0, ev = 0, pv = 0, s0 = Infinity, s1 = -Infinity, b0 = Infinity, b1 = -Infinity;
     list.forEach(a => {
       wt += a.wt; ev += a.wt * a.p / 100;
-      if (a.wt && a.bs !== null && a.bf !== null) pv += a.wt * Math.max(0, Math.min(1, (X.dd - a.bs + DAY) / (a.bf - a.bs + DAY)));
+      if (a.wt) pv += a.wt * X.pf(a, X.dd);
       if (a.s !== null) s0 = Math.min(s0, a.s); if (a.f !== null) s1 = Math.max(s1, a.f);
       if (a.bs !== null) b0 = Math.min(b0, a.bs); if (a.bf !== null) b1 = Math.max(b1, a.bf);
     });
@@ -818,7 +898,7 @@
     const rows = top.map(w => {
       const set = wbsSet(w.id), list = S.acts.filter(a => set.has(a.w));
       const wt = list.reduce((s, a) => s + a.wt, 0), ev = list.reduce((s, a) => s + a.wt * a.p / 100, 0);
-      let pv = 0; list.forEach(a => { if (a.wt && a.bs !== null && a.bf !== null) pv += a.wt * Math.max(0, Math.min(1, (X.dd - a.bs + DAY) / (a.bf - a.bs + DAY))); });
+      let pv = 0; list.forEach(a => { if (a.wt) pv += a.wt * X.pf(a, X.dd); });
       return { w, wt, ev, pv };
     }).filter(r => r.wt);
     return {
@@ -869,9 +949,65 @@
   }
   function renderProgBars() {
     const html = `<span class="muted small">Programme</span><div class="seg">${PROGRAMS.map(p => `<button data-prog="${p.id}" class="${p.id === ACTIVE ? 'on' : ''}" ${PS[p.id] ? '' : 'disabled title="Not published yet"'}>${esc(p.short)}</button>`).join('')}</div>` +
-      (S ? `<span class="muted small">Baseline <b>${esc(S.meta.baseline?.file || '—')}</b> · update <b>${esc(S.meta.update?.file || '—')}</b> · cut-off <b>${fd(X.dd)}</b></span>` : '');
+      (S ? `<span class="muted small">Baseline <b>${esc(S.meta.baseline?.file || '—')}</b> · update <b>${esc(S.meta.update?.file || '—')}</b></span>
+        <button class="cut-chip${X.custom ? ' custom' : ''}" data-cut="open" title="Change the cut-off date / hour">Cut-off <b>${fdt(X.dd)}</b>${X.custom ? ' · custom' : ''} ✎</button>` : '');
     $$('.prog-bar').forEach(el => { el.innerHTML = html; });
+    renderCutBox();
   }
+
+  // ---------------- cut-off block ----------------
+  function setCut(t) {
+    CUT = t;
+    try { t === null ? localStorage.removeItem('trd_cutoff') : localStorage.setItem('trd_cutoff', String(t)); } catch (e) { }
+    PROGRAMS.forEach(p => { if (PS[p.id]) { S = PS[p.id].S; index(); PS[p.id].X = X; } });
+    S = PS[ACTIVE] ? PS[ACTIVE].S : null; X = PS[ACTIVE] ? PS[ACTIVE].X : null;
+    renderAll();
+    const mb = document.querySelector('#mBody .cutbox'); if (mb) mb.outerHTML = cutHtml();
+  }
+  function cutHtml() {
+    if (!S) return '';
+    const rows = PROGRAMS.filter(p => PS[p.id]).map(p => {
+      const x = PS[p.id].X, v = x.actPct - x.planPct;
+      return `<tr><td><b>${esc(p.short)}</b><div class="muted small">${esc(PS[p.id].S.meta.update?.file || '—')}</div></td><td>${fdt(x.xerDD)}</td><td>${fdt(x.friDD)}</td>
+        <td class="n"><b>${fmtP(x.planPct, 2)}</b></td><td class="n">${fmtP(x.actPct, 2)}</td><td class="n ${v < 0 ? 'neg' : 'pos'}">${(v > 0 ? '+' : '') + v.toFixed(2)}%</td><td class="n">${x.pvdd ? (x.ev / x.pvdd).toFixed(2) : '—'}</td></tr>`;
+    }).join('');
+    const d = new Date(X.dd).toISOString();
+    return `<div class="card cutbox">
+      <div class="card-h"><h3>Cut-off (data date)</h3><span class="muted small">Both programmes · saved in this browser</span></div>
+      <div class="cut-row">
+        <div class="cut-now"><span class="muted small">Current cut-off</span><b>${fdt(X.dd)}</b><em class="status ${X.custom ? 'warn' : 'good'}">${X.custom ? 'Custom' : 'XER Friday'}</em></div>
+        <label class="cut-f">Date<input type="date" class="cut-d" value="${d.slice(0, 10)}"></label>
+        <label class="cut-f">Hour<input type="time" class="cut-t" step="60" value="${d.slice(11, 16)}"></label>
+        <button class="btn primary" data-cut="apply">Apply</button>
+        <div class="cut-q">
+          <button class="btn" data-cut="prev" title="One week earlier, Friday 00:00">◀ Previous Friday</button>
+          <button class="btn" data-cut="next" title="One week later, Friday 00:00">Next Friday ▶</button>
+          <button class="btn" data-cut="reset" ${X.custom ? '' : 'disabled'}>Reset to XER Friday</button>
+        </div>
+      </div>
+      <div class="table-wrap"><table class="tbl cut-tbl"><thead><tr><th>Programme</th><th>XER data date</th><th>XER Friday</th><th class="n">Planned at cut-off</th><th class="n">Actual (XER)</th><th class="n">Variance</th><th class="n">SPI</th></tr></thead><tbody>${rows}</tbody></table></div>
+      <p class="muted small">By default the cut-off is the Friday of the XER data date (00:00, the P6 data-date convention). <b>Planned %</b> = each activity's baseline duration elapsed at the cut-off in P6 working time (its calendar: working hours, Friday off, holidays), weighted by budget cost.
+        ${X.calOK ? '' : '<b>This programme file has no calendars yet: re-import the XER files to measure working time; calendar days are used meanwhile.</b>'}
+        <b>Actual %</b> is the progress recorded in the XER update; it only changes with a new update.</p>
+    </div>`;
+  }
+  function renderCutBox() { const h = $('#cutBox'); if (h) h.innerHTML = cutHtml(); }
+  const cutDetail = () => ({ title: 'Cut-off (data date)', body: cutHtml() });
+  document.addEventListener('click', e => {
+    const b = e.target.closest('[data-cut]');
+    if (!b || b.disabled || !X) return;
+    const k = b.dataset.cut;
+    if (k === 'open') return A.Details.open(cutDetail);
+    if (k === 'reset') return setCut(null);
+    if (k === 'prev') return setCut(friday(X.dd - 1));
+    if (k === 'next') return setCut(Math.floor(friday(X.dd) / DAY) * DAY + 7 * DAY);
+    if (k === 'apply') {
+      const box = b.closest('.cutbox'), dv = box.querySelector('.cut-d').value, tv = box.querySelector('.cut-t').value || '00:00';
+      const t = pdt(dv + ' ' + tv);
+      if (t === null) return;
+      setCut(t === X.friDD ? null : t);
+    }
+  });
   const LISTENERS = [];
   function renderAll() { renderProgBars(); A.render(); renderSchedule(); renderForecast(); renderJunctions(); renderCompare(); LISTENERS.forEach(fn => { try { fn(); } catch (e) { console.error(e); } }); }
   document.addEventListener('click', e => {
@@ -1189,7 +1325,7 @@
   // internals shared with outlook.js (forecast-to-date, resources, logic check)
   window.SCHEDX = {
     get S() { return S; }, get X() { return X; }, get active() { return ACTIVE; }, PS, PROGRAMS, prog, withProg, RAW,
-    wbsSet, wStats, isDone, isActive, isMs, finVar, critical, stTag, fd, ds, tbl, actDetail, wbsDetail, renderProgBars, spread, DAY, junctions: () => junctions(), mk, monthLabel,
+    wbsSet, wStats, fdt, setCut, isDone, isActive, isMs, finVar, critical, stTag, fd, ds, tbl, actDetail, wbsDetail, renderProgBars, spread, DAY, junctions: () => junctions(), mk, monthLabel,
     onChange: fn => LISTENERS.push(fn)
   };
   wireFilters();

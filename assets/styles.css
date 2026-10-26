@@ -502,3 +502,18 @@ body.printing main { padding: 0; }
 .tbl.mtx thead th:first-child { background: var(--surface-2); z-index: 3; }
 .tbl.mtx .cur { background: color-mix(in srgb, var(--s2) 10%, var(--surface)); }
 @media print { .xf-ref { display: block; } .xf-ref details, .xf-ref[open] { display: block; } }
+
+/* cut-off block */
+.cutbox { margin-bottom: 14px; }
+.cut-row { display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+.cut-now { display: flex; flex-direction: column; gap: 2px; min-width: 190px; }
+.cut-now b { font-size: 18px; color: var(--brand); }
+.cut-now em { align-self: flex-start; font-style: normal; font-size: 11px; padding: 1px 8px; border-radius: 99px; }
+.cut-f { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--muted); }
+.cut-f input { font: inherit; font-size: 14px; color: var(--text); background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; padding: 6px 8px; }
+.cut-q { display: flex; gap: 6px; flex-wrap: wrap; }
+.cut-tbl td { vertical-align: middle; }
+.cut-chip { font: inherit; font-size: 12px; color: var(--text); background: var(--surface-2); border: 1px solid var(--border); border-radius: 99px; padding: 4px 10px; cursor: pointer; }
+.cut-chip b { color: var(--brand); }
+.cut-chip.custom { border-color: var(--warn); }
+@media print { .cut-row, .cut-chip { display: none !important; } }

@@ -114,7 +114,7 @@
     let wt = 0, ev = 0, pv = 0, b0 = Infinity, b1 = -Infinity, s0 = Infinity, s1 = -Infinity, crit = 0, late = 0;
     list.forEach(a => {
       wt += a.wt; ev += a.wt * a.p / 100;
-      if (a.wt && a.bs !== null && a.bf !== null) pv += a.wt * Math.max(0, Math.min(1, (dd - a.bs + DAY) / (a.bf - a.bs + DAY)));
+      if (a.wt) pv += a.wt * X.pf(a, dd);
       if (a.bs !== null) b0 = Math.min(b0, a.bs); if (a.bf !== null) b1 = Math.max(b1, a.bf);
       if (a.s !== null) s0 = Math.min(s0, a.s); if (a.f !== null) s1 = Math.max(s1, a.f);
       if (SX.critical(a)) crit++;
@@ -161,7 +161,7 @@
     if (!host) return;
     if (!SX.S) { host.innerHTML = '<div class="card empty"><h3>Loading P6 programme…</h3></div>'; return; }
     const S = SX.S, X = SX.X, dd = X.dd, c = ix();
-    const l1 = (c.kids[''] || []).map(w => ({ w, st: stats(S.acts.filter(a => SX.wbsSet(w.id).has(a.w))) })).filter(r => r.st.n);
+    const l1 = (c.kids[''] || []).map(w => { const set = SX.wbsSet(w.id); return { w, st: stats(S.acts.filter(a => set.has(a.w))) }; }).filter(r => r.st.n);
     const J = SX.junctions();
     const wk = window.WEEKLY && window.WEEKLY.latest();
     const la = S.acts.filter(a => !SX.isDone(a) && a.s !== null && a.s <= dd + 28 * DAY && (a.f ?? a.s) >= dd);

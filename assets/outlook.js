@@ -131,7 +131,7 @@
       const s0 = Math.max(dd, a.s ?? dd), f0 = Math.max(s0, a.f ?? s0);
       return T < s0 ? a.p : a.p + (100 - a.p) * clamp((T - s0 + DAY) / (f0 - s0 + DAY));
     };
-    const plAt = (a, T) => a.bs === null || a.bf === null ? (SX.isDone(a) ? 100 : 0) : 100 * clamp((T - a.bs + DAY) / (a.bf - a.bs + DAY));
+    const plAt = (a, T) => a.bs === null || a.bf === null ? (SX.isDone(a) ? 100 : 0) : 100 * SX.X.pf(a, T + DAY);   // through the end of day T
     const rows = [];
     let wt = 0, pl = 0, fc = 0, ach = 0, now = 0;
     S.acts.forEach(a => {

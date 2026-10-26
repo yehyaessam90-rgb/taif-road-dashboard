@@ -349,9 +349,9 @@
     $('#p6Pill').classList.toggle('hidden', !P6);
     $('#p6Strip').classList.toggle('hidden', !P6);
     if (P6) {
-      $('#p6Pill').textContent = 'P6 cut-off ' + fmtDate(P6.dataDate);
+      $('#p6Pill').textContent = 'P6 cut-off ' + (P6.cut || fmtDate(P6.dataDate));
       const v = P6.actPct - P6.planPct, slip = Math.round((toDate(P6.fFinish) - toDate(P6.bFinish)) / 864e5);
-      $('#p6Strip').innerHTML = `<div class="p6h"><span class="p6t">Primavera P6 · <b>${esc(P6.prog)}</b> — cut-off <b>${fmtDate(P6.dataDate)}</b></span><span class="muted small">${esc(P6.update)}</span></div>
+      $('#p6Strip').innerHTML = `<div class="p6h"><span class="p6t">Primavera P6 · <b>${esc(P6.prog)}</b> — cut-off <b>${esc(P6.cut || fmtDate(P6.dataDate))}</b>${P6.custom ? ' <em class="status warn">custom</em>' : ''}</span><span class="muted small">${esc(P6.update)}</span></div>
         <div class="p6k">
           <div class="click" data-tabgo="schedule"><span>Planned</span><b>${fmtP(P6.planPct)}</b></div>
           <div class="click" data-tabgo="schedule"><span>Actual</span><b>${fmtP(P6.actPct)}</b></div>
@@ -898,7 +898,7 @@
 
   document.addEventListener('click', e => {
     if (e.target.closest('#sourcePill')) { if (isAdmin()) showTab('import'); return; }
-    if (e.target.closest('#p6Pill')) { showTab('schedule'); return; }
+    if (e.target.closest('#p6Pill')) return;   // opens the cut-off block (schedule.js)
     const go = e.target.closest('[data-tabgo]');
     if (go) { showTab(go.dataset.tabgo); return; }
     if (e.target.closest('th, input, select, label, a, .modal-h')) return;
