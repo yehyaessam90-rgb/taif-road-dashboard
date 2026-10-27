@@ -1313,6 +1313,18 @@
     await Promise.all(PROGRAMS.map(async p => {
       let s = null, src = '';
       if (!skipLocal) { s = await idbGet('schedule:' + p.id); if (!s && p.id === 'tp') s = await idbGet('schedule'); if (s) src = 'local import'; }
+      // a local import made before calendars were kept → use the published copy if it is the same update, else borrow its baseline calendars
+      if (s && !s.cals) {
+        let pub = null;
+        try { const r = await fetch(p.file, { cache: 'no-store' }); if (r.ok) pub = await r.json(); } catch (e) { }
+        if (pub && pub.cals && pub.meta.update?.file === s.meta.update?.file) { s = null; await idbDel('schedule:' + p.id); }
+        else if (pub && pub.cals && pub.meta.baseline?.file === s.meta.baseline?.file) {
+          const by = {}; pub.acts.forEach(a => { by[a.c] = a; });
+          s.acts.forEach(a => { const r = by[a.c]; if (r) { if (r.bt) a.bt = r.bt; if (r.cl !== undefined) a.cl = r.cl; } });
+          s.cals = pub.cals; s.meta.bt = pub.meta.bt; s.meta.cl = pub.meta.cl;
+          await idbSet('schedule:' + p.id, s);
+        }
+      }
       if (!s) { try { const r = await fetch(p.file, { cache: 'no-store' }); if (r.ok) { s = await r.json(); src = 'published ' + p.file; } } catch (e) { } }
       if (s) { S = s; index(); PS[p.id] = { S, X, src }; } else delete PS[p.id];
     }));
