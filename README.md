@@ -54,3 +54,12 @@ Settings → Pages → *Deploy from a branch* → `main` / root → Save. The si
 - Default cut-off = the XER data date (`last_recalc_date`) moved to the **Friday 00:00** of its week (the P6 data-date convention: progress up to the end of Thursday; Friday is a non-working day on the project calendars).
 - **Planned %** = for every activity, the share of its baseline duration elapsed at the cut-off **in P6 working time** (its baseline calendar: 07:00–12:00 / 13:00–18:00, Friday off, holidays/exceptions), weighted by baseline budget cost. Calendars are read from the XER `CALENDAR` table and published in the programme JSON (`cals`, `meta.bt`, `meta.cl`).
 - The **Cut-off block** on the Overview (also from the header pill and the *Cut-off ✎* chip on every programme bar) lets anyone pick any date and hour, step a Friday back / forward, or reset to the XER Friday. It applies to both programmes and is kept in that browser only (`localStorage trd_cutoff`). Actual % always comes from the XER update.
+
+## Recovery / Revised programme (Logic Check page, owner only)
+Drop the update XER of a programme and choose **Recovery** (fit to the contract / baseline finish) or **Revised** (fit to a new finish date and hour). Steps, all in the browser:
+1. Logic fix (same rules as the Logic Check: out-of-sequence FS → SS + FF, SS → FF, SF, leads, open / dangling ends, mandatory constraints).
+2. Remaining durations: in progress = original × (1 − %), not started = original (or keep P6's).
+3. CPM on the XER calendars from the data date — retained logic, lag on the predecessor calendar, float to the project must-finish-by (matches P6's scheduled finish on the 16-Oct files; P6 dates that differ are resource-levelled).
+4. Not-started activities with negative float are shortened by one common factor (whole days, max compression set in the block) — or, for a later new finish, all not-started activities are spread by one factor.
+5. Re-baseline: planned dates = actual dates (completed), actual start + new finish (in progress), new early dates (not started); actual cost = EV, remaining cost = budget − EV, at completion = budget; units follow the same split.
+Outputs: `<file>_Recovery|_Revised.xer` (project ID suffixed -RCV / -REV, Windows-1252 kept) and an Excel log (Summary, Changes, Activities, Relationships, Assignments, Issues).

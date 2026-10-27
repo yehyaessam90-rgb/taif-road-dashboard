@@ -1337,7 +1337,7 @@
   // internals shared with outlook.js (forecast-to-date, resources, logic check)
   window.SCHEDX = {
     get S() { return S; }, get X() { return X; }, get active() { return ACTIVE; }, PS, PROGRAMS, prog, withProg, RAW,
-    wbsSet, wStats, fdt, setCut, isDone, isActive, isMs, finVar, critical, stTag, fd, ds, tbl, actDetail, wbsDetail, renderProgBars, spread, DAY, junctions: () => junctions(), mk, monthLabel,
+    wbsSet, wStats, fdt, setCut, parseCal, friday, isDone, isActive, isMs, finVar, critical, stTag, fd, ds, tbl, actDetail, wbsDetail, renderProgBars, spread, DAY, junctions: () => junctions(), mk, monthLabel,
     onChange: fn => LISTENERS.push(fn)
   };
   wireFilters();

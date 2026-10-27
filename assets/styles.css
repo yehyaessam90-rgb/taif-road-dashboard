@@ -517,3 +517,11 @@ body.printing main { padding: 0; }
 .cut-chip b { color: var(--brand); }
 .cut-chip.custom { border-color: var(--warn); }
 @media print { .cut-row, .cut-chip { display: none !important; } }
+
+/* recovery / revised programme */
+.rv { margin-bottom: 14px; }
+.rv-grid { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; margin-bottom: 10px; }
+.cut-f select { font: inherit; font-size: 14px; color: var(--text); background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; padding: 6px 8px; }
+.rv-drop { padding: 16px; margin: 10px 0; }
+.rv-tiles { margin: 14px 0 10px; }
+.rv .row-btns { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }

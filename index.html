@@ -12,7 +12,7 @@
   try { if (localStorage.getItem('trd_admin') === 'bb132136cba17058787561571dffaa8bfe3d15bac2e1d651b5f0fb7f76dfd34b') document.documentElement.classList.add('admin'); } catch (e) { }
 </script>
 <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="assets/styles.css?v=202610271000">
+<link rel="stylesheet" href="assets/styles.css?v=202610271100">
 <script>
   window.addEventListener('error', function (e) {
     var b = document.getElementById('jsErr');
@@ -20,8 +20,8 @@
     b.innerHTML = '⚠ The page did not load completely (' + (e.message || 'script error') + '). Press <b>Ctrl + F5</b> to reload the latest version.';
   });
 </script>
-<script src="assets/vendor/chart.umd.min.js?v=202610271000"></script>
-<script src="assets/vendor/xlsx.full.min.js?v=202610271000"></script>
+<script src="assets/vendor/chart.umd.min.js?v=202610271100"></script>
+<script src="assets/vendor/xlsx.full.min.js?v=202610271100"></script>
 </head>
 <body>
 <header class="topbar">
@@ -141,6 +141,7 @@
 
   <!-- LOGIC CHECK -->
   <section class="panel" id="tab-logic">
+    <div id="rvBody" class="admin-only"></div>
     <div id="lgBody"></div>
   </section>
 
@@ -344,14 +345,15 @@
 </footer>
 
 <div id="tooltipHost"></div>
-<script src="data/default-data.js?v=202610271000"></script>
-<script src="assets/xer.js?v=202610271000"></script>
-<script src="assets/app.js?v=202610271000"></script>
-<script src="assets/schedule.js?v=202610271000"></script>
-<script src="assets/weekly.js?v=202610271000"></script>
-<script src="assets/logic.js?v=202610271000"></script>
-<script src="assets/outlook.js?v=202610271000"></script>
-<script src="assets/explorer.js?v=202610271000"></script>
-<script src="assets/print.js?v=202610271000"></script>
+<script src="data/default-data.js?v=202610271100"></script>
+<script src="assets/xer.js?v=202610271100"></script>
+<script src="assets/app.js?v=202610271100"></script>
+<script src="assets/schedule.js?v=202610271100"></script>
+<script src="assets/weekly.js?v=202610271100"></script>
+<script src="assets/logic.js?v=202610271100"></script>
+<script src="assets/outlook.js?v=202610271100"></script>
+<script src="assets/revise.js?v=202610271100"></script>
+<script src="assets/explorer.js?v=202610271100"></script>
+<script src="assets/print.js?v=202610271100"></script>
 </body>
 </html>
