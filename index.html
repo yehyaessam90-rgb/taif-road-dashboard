@@ -12,7 +12,7 @@
   try { if (localStorage.getItem('trd_admin') === 'bb132136cba17058787561571dffaa8bfe3d15bac2e1d651b5f0fb7f76dfd34b') document.documentElement.classList.add('admin'); } catch (e) { }
 </script>
 <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="assets/styles.css?v=202610271100">
+<link rel="stylesheet" href="assets/styles.css?v=202610281200">
 <script>
   window.addEventListener('error', function (e) {
     var b = document.getElementById('jsErr');
@@ -20,8 +20,8 @@
     b.innerHTML = '⚠ The page did not load completely (' + (e.message || 'script error') + '). Press <b>Ctrl + F5</b> to reload the latest version.';
   });
 </script>
-<script src="assets/vendor/chart.umd.min.js?v=202610271100"></script>
-<script src="assets/vendor/xlsx.full.min.js?v=202610271100"></script>
+<script src="assets/vendor/chart.umd.min.js?v=202610281200"></script>
+<script src="assets/vendor/xlsx.full.min.js?v=202610281200"></script>
 </head>
 <body>
 <header class="topbar">
@@ -54,6 +54,7 @@
   <button class="tab" data-tab="junctions">Junctions</button>
   <button class="tab" data-tab="outlook">Forecast</button>
   <button class="tab" data-tab="weekly">Weekly Report</button>
+  <button class="tab" data-tab="events">Events</button>
   <button class="tab" data-tab="compare">Compare Programmes</button>
   <button class="tab" data-tab="logic">Logic Check</button>
   <button class="tab fin" data-tab="financial">Financial</button>
@@ -137,6 +138,11 @@
   <!-- COMPARE -->
   <section class="panel" id="tab-compare">
     <div id="cmpBody"></div>
+  </section>
+
+  <!-- EVENTS — NCOs and owner instructions with their letters -->
+  <section class="panel" id="tab-events">
+    <div id="evBody"></div>
   </section>
 
   <!-- LOGIC CHECK -->
@@ -321,6 +327,11 @@
       <div class="row-btns"><button class="btn" id="siteExport">⬇ Download site-resources.json</button><button class="btn danger" id="siteClear">↺ Clear local sheet</button></div>
     </div>
     <div class="card">
+      <div class="card-h"><h3>6 · Events &amp; letters (NCO / owner instructions)</h3></div>
+      <p>Add a new letter to an event (RCRC instruction, Contractor response, approval, Change Order…) or open a new event when the owner issues one. Setting an end date closes the event.</p>
+      <div id="evImport"></div>
+    </div>
+    <div class="card">
       <div class="card-h"><h3>Import log</h3></div>
       <pre id="importLog" class="log">No file imported in this session.</pre>
     </div>
@@ -334,6 +345,7 @@
         <li>Schedule: choose the programme, drop its baseline and update .xer, click <b>Download programme file</b> and upload it to <code>data/</code> (<code>schedule-dbl.json</code> = Detailed Baseline, <code>schedule.json</code> = Target Plan).</li>
         <li>Junction slides: after dropping the slide images click <b>Download slides.json</b> and upload it to <code>data/</code>.</li>
         <li>Weekly report: after importing the .docx click <b>Download weekly.json</b> and upload it to <code>data/</code> (it holds every week imported so far).</li>
+        <li>Events: after adding letters click <b>Download events.json</b> and upload it to <code>data/</code>.</li>
       </ol>
     </div>
   </section>
@@ -345,15 +357,16 @@
 </footer>
 
 <div id="tooltipHost"></div>
-<script src="data/default-data.js?v=202610271100"></script>
-<script src="assets/xer.js?v=202610271100"></script>
-<script src="assets/app.js?v=202610271100"></script>
-<script src="assets/schedule.js?v=202610271100"></script>
-<script src="assets/weekly.js?v=202610271100"></script>
-<script src="assets/logic.js?v=202610271100"></script>
-<script src="assets/outlook.js?v=202610271100"></script>
-<script src="assets/revise.js?v=202610271100"></script>
-<script src="assets/explorer.js?v=202610271100"></script>
-<script src="assets/print.js?v=202610271100"></script>
+<script src="data/default-data.js?v=202610281200"></script>
+<script src="assets/xer.js?v=202610281200"></script>
+<script src="assets/app.js?v=202610281200"></script>
+<script src="assets/schedule.js?v=202610281200"></script>
+<script src="assets/weekly.js?v=202610281200"></script>
+<script src="assets/logic.js?v=202610281200"></script>
+<script src="assets/outlook.js?v=202610281200"></script>
+<script src="assets/revise.js?v=202610281200"></script>
+<script src="assets/events.js?v=202610281200"></script>
+<script src="assets/explorer.js?v=202610281200"></script>
+<script src="assets/print.js?v=202610281200"></script>
 </body>
 </html>
