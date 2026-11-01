@@ -12,7 +12,7 @@
   try { if (localStorage.getItem('trd_admin') === 'bb132136cba17058787561571dffaa8bfe3d15bac2e1d651b5f0fb7f76dfd34b') document.documentElement.classList.add('admin'); } catch (e) { }
 </script>
 <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="assets/styles.css?v=202610281200">
+<link rel="stylesheet" href="assets/styles.css?v=202611011000">
 <script>
   window.addEventListener('error', function (e) {
     var b = document.getElementById('jsErr');
@@ -20,8 +20,8 @@
     b.innerHTML = '⚠ The page did not load completely (' + (e.message || 'script error') + '). Press <b>Ctrl + F5</b> to reload the latest version.';
   });
 </script>
-<script src="assets/vendor/chart.umd.min.js?v=202610281200"></script>
-<script src="assets/vendor/xlsx.full.min.js?v=202610281200"></script>
+<script src="assets/vendor/chart.umd.min.js?v=202611011000"></script>
+<script src="assets/vendor/xlsx.full.min.js?v=202611011000"></script>
 </head>
 <body>
 <header class="topbar">
@@ -312,7 +312,12 @@
       </div>
     </div>
     <div class="card">
-      <div class="card-h"><h3>4 · Junctions presentation (slide images)</h3></div>
+      <div class="card-h"><h3>4 · Junctions — weekly PowerPoint &amp; daily photos</h3></div>
+      <p>The weekly presentation is shown as slides on the Junctions page and every week is kept (choose the week at the top of the page). Daily photos are grouped by day under each junction.</p>
+      <div id="jmImport"><p class="muted small">Loading…</p></div>
+    </div>
+    <div class="card">
+      <div class="card-h"><h3>4b · Legacy — slide images</h3></div>
       <p>In PowerPoint use <b>File › Export › JPEG</b> (all slides), then drop the slide images here. Slide 1 = overview, then Junction 7, 5, 3, 1 — you can change the junction of each slide after loading.</p>
       <label class="chk" style="margin-bottom:8px">Status date <input type="text" id="slDate" placeholder="e.g. 17 Oct 2026"></label>
       <label class="drop" id="dropSl"><input type="file" id="fileSl" accept=".jpg,.jpeg,.png" multiple><span class="drop-ic">▣</span><span><b>Drop the slide images here</b> or click to browse</span><span class="muted small">Slide1.JPG … Slide5.JPG</span></label>
@@ -357,16 +362,17 @@
 </footer>
 
 <div id="tooltipHost"></div>
-<script src="data/default-data.js?v=202610281200"></script>
-<script src="assets/xer.js?v=202610281200"></script>
-<script src="assets/app.js?v=202610281200"></script>
-<script src="assets/schedule.js?v=202610281200"></script>
-<script src="assets/weekly.js?v=202610281200"></script>
-<script src="assets/logic.js?v=202610281200"></script>
-<script src="assets/outlook.js?v=202610281200"></script>
-<script src="assets/revise.js?v=202610281200"></script>
-<script src="assets/events.js?v=202610281200"></script>
-<script src="assets/explorer.js?v=202610281200"></script>
-<script src="assets/print.js?v=202610281200"></script>
+<script src="data/default-data.js?v=202611011000"></script>
+<script src="assets/xer.js?v=202611011000"></script>
+<script src="assets/app.js?v=202611011000"></script>
+<script src="assets/schedule.js?v=202611011000"></script>
+<script src="assets/weekly.js?v=202611011000"></script>
+<script src="assets/logic.js?v=202611011000"></script>
+<script src="assets/outlook.js?v=202611011000"></script>
+<script src="assets/revise.js?v=202611011000"></script>
+<script src="assets/events.js?v=202611011000"></script>
+<script src="assets/jmedia.js?v=202611011000"></script>
+<script src="assets/explorer.js?v=202611011000"></script>
+<script src="assets/print.js?v=202611011000"></script>
 </body>
 </html>

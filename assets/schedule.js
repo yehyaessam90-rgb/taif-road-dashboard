@@ -637,7 +637,7 @@
       const pours = j.pours, started = pours.filter(p => p.a.as).length, doneP = pours.filter(p => isDone(p.a)).length;
       const next = pours.filter(p => !p.a.as && p.a.s !== null).sort((x, y) => x.a.s - y.a.s)[0];
       const sl = window.JSLIDES.get(j.key)[0];
-      const slide = sl ? `<figure class="jslide click" data-slide="${esc(j.key)}"><img src="${sl.src}" alt="${esc(j.name)} presentation slide" loading="lazy"><figcaption>${esc(sl.title || j.name)}${sl.date ? ' · status ' + esc(sl.date) : ''} <span class="muted">· click to enlarge</span></figcaption></figure>` : `<div class="jslide empty muted">No presentation slide for ${j.name} yet</div>`;
+      const slide = window.JMEDIA && JMEDIA.has() ? `<div class="jslide jm-slot" data-jm-key="${esc(j.key)}"></div>` : sl ? `<figure class="jslide click" data-slide="${esc(j.key)}"><img src="${sl.src}" alt="${esc(j.name)} presentation slide" loading="lazy"><figcaption>${esc(sl.title || j.name)}${sl.date ? ' · status ' + esc(sl.date) : ''} <span class="muted">· click to enlarge</span></figcaption></figure>` : `<div class="jslide empty muted">No presentation slide for ${j.name} yet</div>`;
       return `<div class="jline"><div class="card jcard click" data-wbs-open="${esc(j.root.id)}">
         <div class="jh"><div><h3>${j.name}</h3><div class="muted small">Ch ${esc(j.ch)}${j.jeddah ? ' · Jeddah Junction' : ''} · ${st.n} activities</div></div>${spiTag(st.spi)}</div>
         <div class="jbig"><b>${fmtP(st.act, 1)}</b><span class="muted">actual · planned ${fmtP(st.plan, 1)}</span></div>
@@ -662,12 +662,12 @@
     }).join('');
 
     const ov = window.JSLIDES.get('overview')[0], sm = window.JSLIDES.meta();
-    const ovBlock = !ov ? '' : ov.chart
+    const ovBlock = window.JMEDIA && JMEDIA.has() ? '' : !ov ? '' : ov.chart
       ? `<div class="card"><div class="card-h"><h3>Junctions presentation — overview</h3><span class="muted">${esc(sm.file || '')}${ov.date ? ' · status ' + esc(ov.date) : ''}</span></div>
           <div class="grid g-1-1 inner"><div>${(ov.kpis || []).length ? `<div class="dtiles">${ov.kpis.map(k => `<div class="dtile"><div class="lbl">${esc(k[0])}</div><div class="v">${esc(k[1])}</div></div>`).join('')}</div>` : ''}<div class="chart-box"><canvas id="chSlideOv"></canvas></div><p class="muted small">Chart redrawn from the presentation data (plan vs actual per junction).</p></div>
           <figure class="jslide wide click" data-slide="overview"><img src="${ov.src}" alt="Junctions overview slide"><figcaption class="muted small">Overview slide — click to enlarge</figcaption></figure></div></div>`
       : `<div class="card"><div class="card-h"><h3>Junctions presentation — overview</h3><span class="muted">${esc(sm.file || '')}${ov.date ? ' · status ' + esc(ov.date) : ''}</span></div><figure class="jslide wide click" data-slide="overview"><img src="${ov.src}" alt="Junctions overview slide"></figure></div>`;
-    host.innerHTML = `<div class="prog-bar"></div>` + ovBlock + `<div class="jlist">${cards}</div>
+    host.innerHTML = `<div class="prog-bar"></div><div id="jmTop"></div>` + ovBlock + `<div class="jlist">${cards}</div>
       <div class="grid g-1-1"><div class="card"><div class="card-h"><h3>Planned vs actual by junction</h3><span class="muted">Weighted by cost · data date ${fd(dd)}</span></div><div class="chart-box"><canvas id="chJunc"></canvas></div></div>
       <div class="card"><div class="card-h"><h3>Deck slab concrete — status</h3></div><div class="chart-box"><canvas id="chJPour"></canvas></div></div></div>
       <div class="card"><div class="card-h"><h3>Progress by component</h3><span class="muted">Click any row for its activities</span></div>${compTables}</div>
@@ -678,6 +678,7 @@
         <p class="muted small">Pour window = the P6 "Deck Slab … Concrete" activity of each span. Baseline = ${esc(S.meta.baseline?.file || '—')}; forecast / actual = ${esc(S.meta.update?.file || '—')} (data date ${fd(dd)}).</p></div>`;
     drawPours();
     renderProgBars();
+    if (window.JMEDIA) JMEDIA.decorate();
     $$('#jfJ button').forEach(b => b.onclick = e => { e.stopPropagation(); JF.j = b.dataset.j; drawPours(); });
     $$('#jfL button').forEach(b => b.onclick = e => { e.stopPropagation(); JF.lane = b.dataset.l; drawPours(); });
 
@@ -1337,7 +1338,7 @@
   // internals shared with outlook.js (forecast-to-date, resources, logic check)
   window.SCHEDX = {
     get S() { return S; }, get X() { return X; }, get active() { return ACTIVE; }, PS, PROGRAMS, prog, withProg, RAW,
-    wbsSet, wStats, fdt, setCut, parseCal, friday, isDone, isActive, isMs, finVar, critical, stTag, fd, ds, tbl, actDetail, wbsDetail, renderProgBars, spread, DAY, junctions: () => junctions(), mk, monthLabel,
+    wbsSet, wStats, fdt, setCut, parseCal, friday, isDone, isActive, isMs, finVar, critical, stTag, fd, ds, tbl, actDetail, wbsDetail, renderProgBars, renderJunctions: () => renderJunctions(), spread, DAY, junctions: () => junctions(), mk, monthLabel,
     onChange: fn => LISTENERS.push(fn)
   };
   wireFilters();
