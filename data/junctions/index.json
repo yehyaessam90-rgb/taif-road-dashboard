@@ -1,8 +1,53 @@
 {
  "v": 1,
- "rev": 1793512042403,
+ "rev": 1793512292770,
  "updated": "2026-11-01T00:00:00Z",
  "weeks": [
+  {
+   "date": "2026-10-31",
+   "file": "data/junctions/weekly/2026-10-31.pptx",
+   "name": "Slides 1-5 (31 Oct 2026, from slide images)",
+   "size": 624167,
+   "slides": [
+    {
+     "n": 1,
+     "key": "overview",
+     "title": "Taif Road Development — Junctions Daily Dashboard",
+     "plan": 37.03,
+     "act": 20.35
+    },
+    {
+     "n": 2,
+     "key": "J7",
+     "title": "Junction-07 (4+050) · ASEER STREET · Work Follow-Up Status",
+     "plan": 62.11,
+     "act": 37.98
+    },
+    {
+     "n": 3,
+     "key": "J5",
+     "title": "Junction-05 (7+300) · AL SHIFA STREET · Work Follow-Up Status",
+     "plan": 29.47,
+     "act": 16.27
+    },
+    {
+     "n": 4,
+     "key": "J3",
+     "title": "Junction-03 (10+500) · TAIBA STREET · Work Follow-Up Status",
+     "plan": 26.47,
+     "act": 12.43
+    },
+    {
+     "n": 5,
+     "key": "J1",
+     "title": "Junction-01 (15+400) · JEDDAH JUNCTON · Work Follow-Up Status",
+     "plan": 18.21,
+     "act": 5.33
+    }
+   ],
+   "added": "2026-11-01",
+   "fromImages": true
+  },
   {
    "date": "2026-10-17",
    "file": "data/junctions/weekly/2026-10-17.pptx",
@@ -12,35 +57,35 @@
     {
      "n": 1,
      "key": "overview",
-     "title": "Taif Road Development \u2014 Junctions Daily Dashboard",
+     "title": "Taif Road Development — Junctions Daily Dashboard",
      "plan": 32.3,
      "act": 18.51
     },
     {
      "n": 2,
      "key": "J7",
-     "title": "Junction-07 (4+050) \u00b7 ASEER STREET \u00b7 Work Follow-Up Status",
+     "title": "Junction-07 (4+050) · ASEER STREET · Work Follow-Up Status",
      "plan": 57.5,
      "act": 34.86
     },
     {
      "n": 3,
      "key": "J5",
-     "title": "Junction-05 (7+300) \u00b7 AL SHIFA STREET \u00b7 Work Follow-Up Status",
+     "title": "Junction-05 (7+300) · AL SHIFA STREET · Work Follow-Up Status",
      "plan": 24.17,
      "act": 15.64
     },
     {
      "n": 4,
      "key": "J3",
-     "title": "Junction-03 (10+500) \u00b7 TAIBA STREET \u00b7 Work Follow-Up Status",
+     "title": "Junction-03 (10+500) · TAIBA STREET · Work Follow-Up Status",
      "plan": 20.9,
      "act": 10.19
     },
     {
      "n": 5,
      "key": "J1",
-     "title": "Junction-01 (15+400) \u00b7 JEDDAH JUNCTON \u00b7 Work Follow-Up Status",
+     "title": "Junction-01 (15+400) · JEDDAH JUNCTON · Work Follow-Up Status",
      "plan": 16.1,
      "act": 4.42
     }
@@ -48,5 +93,48 @@
    "added": "2026-11-01"
   }
  ],
- "daily": []
+ "daily": [
+  {
+   "date": "2026-11-01",
+   "key": "J7",
+   "photos": [
+    {
+     "file": "data/junctions/daily/2026-11-01/J7/01.jpg",
+     "thumb": "data/junctions/daily/2026-11-01/J7/01_t.jpg",
+     "size": 297603,
+     "w": 1600,
+     "h": 738,
+     "cap": "",
+     "name": "WhatsApp photo 1"
+    },
+    {
+     "file": "data/junctions/daily/2026-11-01/J7/02.jpg",
+     "thumb": "data/junctions/daily/2026-11-01/J7/02_t.jpg",
+     "size": 317778,
+     "w": 1600,
+     "h": 738,
+     "cap": "",
+     "name": "WhatsApp photo 2"
+    },
+    {
+     "file": "data/junctions/daily/2026-11-01/J7/03.jpg",
+     "thumb": "data/junctions/daily/2026-11-01/J7/03_t.jpg",
+     "size": 321498,
+     "w": 1600,
+     "h": 738,
+     "cap": "",
+     "name": "WhatsApp photo 3"
+    },
+    {
+     "file": "data/junctions/daily/2026-11-01/J7/04.jpg",
+     "thumb": "data/junctions/daily/2026-11-01/J7/04_t.jpg",
+     "size": 300079,
+     "w": 1600,
+     "h": 738,
+     "cap": "",
+     "name": "WhatsApp photo 4"
+    }
+   ]
+  }
+ ]
 }
