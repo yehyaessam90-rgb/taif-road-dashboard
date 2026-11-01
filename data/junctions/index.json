@@ -1,7 +1,7 @@
 {
  "v": 1,
- "rev": 1793512292770,
- "updated": "2026-11-01T00:00:00Z",
+ "rev": 1793517759922,
+ "updated": "2026-11-01T07:22:39.922Z",
  "weeks": [
   {
    "date": "2026-10-31",
@@ -133,6 +133,159 @@
      "h": 738,
      "cap": "",
      "name": "WhatsApp photo 4"
+    }
+   ]
+  },
+  {
+   "date": "2026-11-01",
+   "key": "J5",
+   "photos": [
+    {
+     "file": "data/junctions/daily/2026-11-01/J5/01.jpg",
+     "thumb": "data/junctions/daily/2026-11-01/J5/01_t.jpg",
+     "size": 305244,
+     "w": 1600,
+     "h": 738,
+     "cap": "",
+     "name": "Jun 05 02.jpeg"
+    },
+    {
+     "file": "data/junctions/daily/2026-11-01/J5/02.jpg",
+     "thumb": "data/junctions/daily/2026-11-01/J5/02_t.jpg",
+     "size": 335513,
+     "w": 1600,
+     "h": 738,
+     "cap": "",
+     "name": "Jun 05 03.jpeg"
+    },
+    {
+     "file": "data/junctions/daily/2026-11-01/J5/03.jpg",
+     "thumb": "data/junctions/daily/2026-11-01/J5/03_t.jpg",
+     "size": 302642,
+     "w": 1600,
+     "h": 738,
+     "cap": "",
+     "name": "Jun 05 04.jpeg"
+    },
+    {
+     "file": "data/junctions/daily/2026-11-01/J5/04.jpg",
+     "thumb": "data/junctions/daily/2026-11-01/J5/04_t.jpg",
+     "size": 357490,
+     "w": 1600,
+     "h": 738,
+     "cap": "",
+     "name": "Jun 05 01.jpeg"
+    }
+   ]
+  },
+  {
+   "date": "2026-11-01",
+   "key": "J3",
+   "photos": [
+    {
+     "file": "data/junctions/daily/2026-11-01/J3/01.jpg",
+     "thumb": "data/junctions/daily/2026-11-01/J3/01_t.jpg",
+     "size": 310178,
+     "w": 1600,
+     "h": 1200,
+     "cap": "",
+     "name": "Jun 03 01.jpeg"
+    },
+    {
+     "file": "data/junctions/daily/2026-11-01/J3/02.jpg",
+     "thumb": "data/junctions/daily/2026-11-01/J3/02_t.jpg",
+     "size": 293699,
+     "w": 1600,
+     "h": 1200,
+     "cap": "",
+     "name": "Jun 03 02.jpeg"
+    },
+    {
+     "file": "data/junctions/daily/2026-11-01/J3/03.jpg",
+     "thumb": "data/junctions/daily/2026-11-01/J3/03_t.jpg",
+     "size": 203475,
+     "w": 1600,
+     "h": 720,
+     "cap": "",
+     "name": "Jun 03 03.jpeg"
+    },
+    {
+     "file": "data/junctions/daily/2026-11-01/J3/04.jpg",
+     "thumb": "data/junctions/daily/2026-11-01/J3/04_t.jpg",
+     "size": 191671,
+     "w": 1600,
+     "h": 720,
+     "cap": "",
+     "name": "Jun 03 04.jpeg"
+    }
+   ]
+  },
+  {
+   "date": "2026-11-01",
+   "key": "J1",
+   "photos": [
+    {
+     "file": "data/junctions/daily/2026-11-01/J1/01.jpg",
+     "thumb": "data/junctions/daily/2026-11-01/J1/01_t.jpg",
+     "size": 285452,
+     "w": 1600,
+     "h": 738,
+     "cap": "",
+     "name": "Jun 01 01.jpeg"
+    },
+    {
+     "file": "data/junctions/daily/2026-11-01/J1/02.jpg",
+     "thumb": "data/junctions/daily/2026-11-01/J1/02_t.jpg",
+     "size": 309730,
+     "w": 1600,
+     "h": 737,
+     "cap": "",
+     "name": "Jun 01 02.jpeg"
+    },
+    {
+     "file": "data/junctions/daily/2026-11-01/J1/03.jpg",
+     "thumb": "data/junctions/daily/2026-11-01/J1/03_t.jpg",
+     "size": 254724,
+     "w": 1600,
+     "h": 738,
+     "cap": "",
+     "name": "Jun 01 03.jpeg"
+    },
+    {
+     "file": "data/junctions/daily/2026-11-01/J1/04.jpg",
+     "thumb": "data/junctions/daily/2026-11-01/J1/04_t.jpg",
+     "size": 317523,
+     "w": 1600,
+     "h": 738,
+     "cap": "",
+     "name": "Jun 01 04.jpeg"
+    },
+    {
+     "file": "data/junctions/daily/2026-11-01/J1/05.jpg",
+     "thumb": "data/junctions/daily/2026-11-01/J1/05_t.jpg",
+     "size": 243459,
+     "w": 1600,
+     "h": 738,
+     "cap": "",
+     "name": "Jun 01 05.jpeg"
+    },
+    {
+     "file": "data/junctions/daily/2026-11-01/J1/06.jpg",
+     "thumb": "data/junctions/daily/2026-11-01/J1/06_t.jpg",
+     "size": 337183,
+     "w": 1600,
+     "h": 738,
+     "cap": "",
+     "name": "Jun 01 06.jpeg"
+    },
+    {
+     "file": "data/junctions/daily/2026-11-01/J1/07.jpg",
+     "thumb": "data/junctions/daily/2026-11-01/J1/07_t.jpg",
+     "size": 277576,
+     "w": 1600,
+     "h": 738,
+     "cap": "",
+     "name": "Jun 01 07.jpeg"
     }
    ]
   }

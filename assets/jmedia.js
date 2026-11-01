@@ -42,6 +42,11 @@
       else if (o.op === 'delWeek') x.weeks = x.weeks.filter(w => w.date !== o.date);
       else if (o.op === 'addPhotos') { let g = x.daily.find(d => d.date === o.date && d.key === o.key); if (!g) x.daily.push(g = { date: o.date, key: o.key, photos: [] }); o.photos.forEach(p => { if (!g.photos.some(q => q.file === p.file)) g.photos.push(p); }); }
       else if (o.op === 'delPhoto') x.daily.forEach(g => { g.photos = g.photos.filter(p => p.file !== o.file); });
+      else if (o.op === 'movePhoto') {
+        let p = null;
+        x.daily.forEach(g => { const i = g.photos.findIndex(q => q.file === o.file); if (i >= 0) p = g.photos.splice(i, 1)[0]; });
+        if (p) { let g = x.daily.find(d => d.date === o.date && d.key === o.key); if (!g) x.daily.push(g = { date: o.date, key: o.key, photos: [] }); g.photos.push(p); }
+      }
     });
     x.daily = x.daily.filter(g => g.photos.length);
     x.weeks.sort((a, b) => b.date.localeCompare(a.date));
@@ -59,6 +64,11 @@
     try { const r = await fetch(BASE + 'index.json', { cache: 'no-store' }); if (r.ok) PUB = await r.json(); } catch (e) { }
     const st = await kvGet('state');
     OPS = st && st.ops ? st.ops : [];
+    // additions already on the site (published from another browser or by hand) are not pending any more
+    const onSite = new Set(); PUB.weeks.forEach(w => onSite.add(w.file)); PUB.daily.forEach(g => g.photos.forEach(p => onSite.add(p.file)));
+    const n0 = OPS.length;
+    OPS = OPS.filter(o => !(o.op === 'addPhotos' && o.photos.every(p => onSite.has(p.file))) && !(o.op === 'addWeek' && PUB.weeks.some(w => w.file === o.week.file && w.size === o.week.size)));
+    if (OPS.length !== n0) await kvSet('state', { ops: OPS });
     // a publish made in this browser may not be live on GitHub Pages yet
     const just = await kvGet('published');
     if (just && just.rev > (PUB.rev || 0)) PUB = just;
@@ -266,6 +276,10 @@
     if (dk) { e.stopPropagation(); openDaily(dk.dataset.jmDaily); return; }
     const dy = e.target.closest('[data-jm-day]');
     if (dy) { e.stopPropagation(); openDaily(dy.dataset.jmKey || '', dy.dataset.jmDay); return; }
+    const pdl = e.target.closest('[data-jm-pdel]');
+    if (pdl) { e.stopPropagation(); if (confirm('Delete this photo from the platform?')) { await removePhotos([pdl.dataset.jmPdel]); A.Details.close ? A.Details.close() : document.querySelector('#mClose').click(); } return; }
+    const pmv = e.target.closest('[data-jm-pmove]');
+    if (pmv) { e.stopPropagation(); const [f, k, d] = pmv.dataset.jmPmove.split('|'); await movePhotos([f], k, d); document.querySelector('#mClose').click(); return; }
     const ph = e.target.closest('[data-jm-photo]');
     if (ph) { e.stopPropagation(); const [k, d, i] = ph.dataset.jmPhoto.split('|'); openPhoto(k, d, +i); }
   }, true);
@@ -297,7 +311,8 @@
     A.Details.open(() => {
       setTimeout(() => fillImgs($('#mBody')), 0);
       return { title: `${esc(KNAME[key] || key)} · ${fdw(date)}`, sub: `Photo ${i + 1} of ${g.photos.length}${p.cap ? ' · ' + esc(p.cap) : ''}`,
-        body: `<img class="wk-full" data-jm-src="${esc(p.file)}" alt=""><div class="row-btns" style="justify-content:center">${i > 0 ? `<button class="btn" data-jm-photo="${key}|${date}|${i - 1}">◀ Previous</button>` : ''}${i < g.photos.length - 1 ? `<button class="btn" data-jm-photo="${key}|${date}|${i + 1}">Next ▶</button>` : ''}</div>` };
+        body: `<img class="wk-full" data-jm-src="${esc(p.file)}" alt=""><div class="row-btns" style="justify-content:center">${i > 0 ? `<button class="btn" data-jm-photo="${key}|${date}|${i - 1}">◀ Previous</button>` : ''}${i < g.photos.length - 1 ? `<button class="btn" data-jm-photo="${key}|${date}|${i + 1}">Next ▶</button>` : ''}</div>
+          <div class="row-btns admin-only jm-adm" style="justify-content:center"><button class="btn danger" data-jm-pdel="${esc(p.file)}">🗑 Delete this photo</button><span class="muted small">move to</span>${[...KEYS, 'general'].filter(k => k !== key).map(k => `<button class="btn ghost" data-jm-pmove="${esc(p.file)}|${k}|${date}">${k === 'general' ? 'General' : k}</button>`).join('')}</div>` };
     });
   }
 
@@ -311,6 +326,53 @@
     return { blob, w: c.width, h: c.height };
   }
   let PEND = null;   // parsed weekly deck waiting for confirmation
+  // ---- manage (delete / move) ----
+  const MF = { date: '', key: '', sel: new Set() };
+  const isPending = f => pendingFiles().includes(f);
+  function manageHtml() {
+    const dates = [...new Set(IDX.daily.map(g => g.date))];
+    if (!dates.length) return '<p class="muted small">No photos yet.</p>';
+    if (!MF.date || !dates.includes(MF.date)) MF.date = dates[0];
+    const groups = IDX.daily.filter(g => g.date === MF.date && (!MF.key || g.key === MF.key));
+    const pend = new Set(pendingFiles());
+    return `<div class="ev-form">
+        <label class="cut-f">Day<select id="jmMDate">${dates.map(d => `<option value="${d}" ${d === MF.date ? 'selected' : ''}>${fd(d)} · ${IDX.daily.filter(g => g.date === d).reduce((n, g) => n + g.photos.length, 0)} photos</option>`).join('')}</select></label>
+        <label class="cut-f">Junction<select id="jmMKey"><option value="">All</option>${[...KEYS, 'general'].map(k => `<option value="${k}" ${k === MF.key ? 'selected' : ''}>${KNAME[k]}</option>`).join('')}</select></label>
+      </div>
+      ${groups.map(g => `<div class="jm-gk">${esc(KNAME[g.key] || g.key)} · ${g.photos.length} photo${g.photos.length === 1 ? '' : 's'} <button class="btn ghost" data-jm-mall="${g.key}">select all</button></div>
+        <div class="jm-mgrid">${g.photos.map(p => `<label class="jm-mph ${MF.sel.has(p.file) ? 'on' : ''}"><input type="checkbox" data-jm-msel="${esc(p.file)}" ${MF.sel.has(p.file) ? 'checked' : ''}><img data-jm-src="${esc(p.thumb)}" alt=""><span>${esc(p.name || p.file.split('/').pop())}${pend.has(p.file) ? ' · <b class="neg">not published</b>' : ''}</span></label>`).join('')}</div>`).join('') || '<p class="muted small">No photos for this filter.</p>'}
+      <div class="row-btns jm-mact"><b id="jmMCount">${MF.sel.size} selected</b>
+        <button class="btn danger" id="jmMDel" ${MF.sel.size ? '' : 'disabled'}>🗑 Delete selected</button>
+        <span class="muted small">or move them to</span><select id="jmMToK">${[...KEYS, 'general'].map(k => `<option value="${k}">${KNAME[k]}</option>`).join('')}</select><input type="date" id="jmMToD" value="${MF.date}">
+        <button class="btn" id="jmMMove" ${MF.sel.size ? '' : 'disabled'}>↪ Move selected</button></div>`;
+  }
+  function wireManage() {
+    const host = $('#jmManage'); if (!host) return;
+    fillImgs(host);
+    const re = () => { host.innerHTML = manageHtml(); wireManage(); };
+    const d = $('#jmMDate'), k = $('#jmMKey');
+    if (d) d.onchange = () => { MF.date = d.value; MF.sel.clear(); re(); };
+    if (k) k.onchange = () => { MF.key = k.value; MF.sel.clear(); re(); };
+    host.querySelectorAll('[data-jm-msel]').forEach(c => c.onchange = () => { c.checked ? MF.sel.add(c.dataset.jmMsel) : MF.sel.delete(c.dataset.jmMsel); c.closest('label').classList.toggle('on', c.checked); $('#jmMCount').textContent = MF.sel.size + ' selected'; $('#jmMDel').disabled = $('#jmMMove').disabled = !MF.sel.size; });
+    host.querySelectorAll('[data-jm-mall]').forEach(b => b.onclick = () => { const g = IDX.daily.find(x => x.date === MF.date && x.key === b.dataset.jmMall); g.photos.forEach(p => MF.sel.add(p.file)); re(); });
+    if ($('#jmMDel')) $('#jmMDel').onclick = async () => { if (!confirm(`Delete ${MF.sel.size} photo(s) from the platform?`)) return; const l = [...MF.sel]; MF.sel.clear(); await removePhotos(l); };
+    if ($('#jmMMove')) $('#jmMMove').onclick = async () => { const to = $('#jmMToK').value, td = $('#jmMToD').value || MF.date; const l = [...MF.sel]; MF.sel.clear(); MF.key = to; MF.date = td; await movePhotos(l, to, td); };
+  }
+  const photoOf = f => { for (const g of IDX.daily) { const p = g.photos.find(q => q.file === f); if (p) return p; } return null; };
+  async function removePhotos(files) {
+    for (const f of files) {
+      const p = photoOf(f); if (!p) continue;
+      if (isPending(f)) { await fileDel(p.file); await fileDel(p.thumb); }
+      OPS.push({ op: 'delPhoto', file: f });
+    }
+    await saveOps(); refresh();
+    $('#jmPubMsg').innerHTML = `✓ ${files.length} photo${files.length === 1 ? '' : 's'} removed. <b>Publish</b> to remove ${files.length === 1 ? 'it' : 'them'} from the site for everyone.`;
+  }
+  async function movePhotos(files, key, date) {
+    files.forEach(f => OPS.push({ op: 'movePhoto', file: f, key, date }));
+    await saveOps(); refresh();
+    $('#jmPubMsg').innerHTML = `✓ ${files.length} photo${files.length === 1 ? '' : 's'} moved to ${esc(KNAME[key])} · ${fd(date)}. <b>Publish</b> to apply it for everyone.`;
+  }
   function renderImport() {
     const host = $('#jmImport');
     if (!host || !LOADED) return;
@@ -330,6 +392,8 @@
       </div>
       <label class="drop" id="jmDropP"><input type="file" id="jmFileP" accept="image/*" multiple><span class="drop-ic">📷</span><span><b>Drop the day's photos</b> (several at once) or click to browse</span><span class="muted small">Resized to 1600 px JPEG + thumbnails — one group per day and junction</span></label>
       <div id="jmPMsg" class="muted small xer-status">${photos} photos on ${new Set(IDX.daily.map(g => g.date)).size} days · photos ${mb(pSize)} · presentations ${mb(wSize)}</div>
+      <h4 class="dsec">B2 · Manage photos — delete or move to another junction / day</h4>
+      <div id="jmManage">${manageHtml()}</div>
       <h4 class="dsec">C · Publish</h4>
       <p class="small">${pf.length ? `<b>${pf.length} file${pf.length === 1 ? '' : 's'} not published yet</b> — visible only in this browser.` : 'Everything is published.'}${OPS.length && !pf.length ? ' (index changes pending)' : ''}</p>
       <div class="ev-form"><label class="cut-f ev-wide">GitHub token (fine-grained, this repository only, Contents: Read and write) — kept only in this browser<input type="password" id="jmTok" value="${esc(tok)}" placeholder="github_pat_…" autocomplete="off"></label></div>
@@ -343,6 +407,7 @@
     $('#jmTokDel').onclick = () => { try { localStorage.removeItem('trd_gh_token'); } catch (e) { } $('#jmTok').value = ''; $('#jmPubMsg').textContent = 'Token removed from this browser.'; };
     $('#jmPub').onclick = publish;
     $('#jmZip').onclick = zip;
+    wireManage();
     $('#jmReset').onclick = async () => { if (!confirm('Discard every week / photo not published yet?')) return; for (const p of pendingFiles()) await fileDel(p); OPS = []; await saveOps(); refresh(); };
     if (PEND) pendView();
   }
@@ -426,6 +491,13 @@
       if (cur && cur.content) remote = JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(cur.content.replace(/\n/g, '')), c => c.charCodeAt(0))));
       const merged = apply(remote, OPS); merged.v = 1; merged.rev = Date.now(); merged.updated = new Date().toISOString();
       const files = pendingFiles(), tree = [];
+      // files dropped from the index (deleted photos / weeks) are deleted from the repository too
+      const keepP = new Set(); merged.weeks.forEach(w => keepP.add(w.file)); merged.daily.forEach(g => g.photos.forEach(p => { keepP.add(p.file); keepP.add(p.thumb); }));
+      const gone = []; remote.weeks.forEach(w => { if (!keepP.has(w.file)) gone.push(w.file); }); remote.daily.forEach(g => g.photos.forEach(p => [p.file, p.thumb].forEach(f => { if (!keepP.has(f)) gone.push(f); })));
+      if (gone.length) {
+        const all = await gh('/git/trees/' + head.tree.sha + '?recursive=1'), exists = new Set(all.tree.map(t => t.path));
+        gone.filter(f => exists.has(f)).forEach(f => tree.push({ path: f, mode: '100644', type: 'blob', sha: null }));
+      }
       for (const [i, p] of files.entries()) {
         msg(`Uploading ${i + 1} / ${files.length}: ${esc(p.split('/').slice(-3).join('/'))}…`);
         const blob = await fileGet(p); if (!blob) continue;
@@ -436,7 +508,8 @@
       tree.push({ path: BASE + 'index.json', mode: '100644', type: 'blob', sha: ib.sha });
       msg('Creating the commit…');
       const t = await gh('/git/trees', { method: 'POST', body: JSON.stringify({ base_tree: head.tree.sha, tree }) });
-      const added = OPS.filter(x => x.op === 'addWeek').map(x => 'week ' + x.week.date).concat(OPS.filter(x => x.op === 'addPhotos').map(x => `${x.photos.length} photo(s) ${x.key} ${x.date}`));
+      const nDel = OPS.filter(x => x.op === 'delPhoto').length, nMov = OPS.filter(x => x.op === 'movePhoto').length;
+      const added = (nDel ? [nDel + ' photo(s) deleted'] : []).concat(nMov ? [nMov + ' photo(s) moved'] : []).concat(OPS.filter(x => x.op === 'addWeek').map(x => 'week ' + x.week.date).concat(OPS.filter(x => x.op === 'addPhotos').map(x => `${x.photos.length} photo(s) ${x.key} ${x.date}`)));
       const c = await gh('/git/commits', { method: 'POST', body: JSON.stringify({ message: 'Junctions media: ' + (added.join(', ') || 'index update'), tree: t.sha, parents: [ref.object.sha] }) });
       await gh('/git/refs/heads/main', { method: 'PATCH', body: JSON.stringify({ sha: c.sha }) });
       await kvSet('published', merged);
@@ -454,7 +527,7 @@
     XLSX.CFB.utils.cfb_add(z, BASE + 'index.json', new TextEncoder().encode(JSON.stringify(merged, null, 1)));
     const out = XLSX.CFB.write(z, { fileType: 'zip', type: 'array', compression: false });
     const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([out], { type: 'application/zip' })); a.download = 'junctions-update-' + iso(new Date()) + '.zip'; a.click();
-    $('#jmPubMsg').innerHTML = 'Unzip it, open the repository on GitHub → <b>Add file › Upload files</b> → drag the <code>data</code> folder from the zip → <b>Commit</b>. Then click <b>Discard unpublished</b> here once the site shows the new files.';
+    $('#jmPubMsg').innerHTML = '<b>GitHub does not unzip files</b> — uploading the .zip itself changes nothing. Unzip it first, open the repository on GitHub → <b>Add file › Upload files</b> → drag the <code>data</code> folder from the zip → <b>Commit</b>. Then click <b>Discard unpublished</b> here once the site shows the new files.';
   }
 
   window.JMEDIA = { has, decorate, parseDeck, scrubDeck, load, get index() { return IDX; } };
