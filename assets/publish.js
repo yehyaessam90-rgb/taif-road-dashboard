@@ -60,7 +60,7 @@
       const rp = await fetch(`https://api.github.com/repos/${o}/${r}`, { headers: H });
       if (me && me.toLowerCase() !== o.toLowerCase()) return `✗ The token belongs to the GitHub account <b>${esc(me)}</b>, but the site is in <b>${esc(o)}</b>. Sign in to GitHub as <b>${esc(o)}</b> and create the token there.`;
       if (!rp.ok) return `✗ The token cannot see the repository <b>${esc(r)}</b>. ${fix} → <b>Repository access</b>: choose <b>Only select repositories</b> and pick <b>${esc(r)}</b> → Save.`;
-      return `✗ The token can <b>read</b> the repository but not <b>write</b> to it. ${fix} → <b>Repository access</b>: <b>Only select repositories</b> → <b>${esc(r)}</b> (not "Public repositories (read-only)"), then <b>Permissions › Repository permissions › Contents</b> → change <b>Read-only</b> to <b>Read and write</b> → <b>Update</b>. The same token keeps working — no need to paste it again.`;
+      return `✗ The token can <b>read</b> the repository but not <b>write</b> to it. ${fix} → <b>Repository access</b>: <b>Only select repositories</b> → <b>${esc(r)}</b> (not "Public repositories (read-only)"), then under <b>Permissions</b> click <b>＋ Add permissions</b> → tick <b>Contents</b> → set it to <b>Read and write</b> (Metadata stays Read-only — that is normal) → <b>Update</b>. The same token keeps working — no need to paste it again.`;
     } catch (e) { return '✗ ' + esc(err.message); }
   }
 
@@ -153,7 +153,7 @@
       ${OPEN || (!tok && state === 'pending') ? `<div class="pub-set">
         <p class="small"><b>Connect GitHub once</b> — then every import goes to the public link automatically (no downloading or uploading files):</p>
         <ol class="small"><li>Open <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">github.com › Settings › Developer settings › Fine-grained tokens › Generate new token</a>.</li>
-          <li>Repository access: <b>Only select repositories</b> → <code>taif-road-dashboard</code>. Permissions › Repository › <b>Contents: Read and write</b>. Choose an expiry (e.g. 1 year) → Generate.</li>
+          <li>Repository access: <b>Only select repositories</b> → <code>taif-road-dashboard</code>. Permissions: <b>＋ Add permissions</b> → <b>Contents</b> → <b>Read and write</b> (Metadata stays Read-only). Choose an expiry (e.g. 1 year) → Generate.</li>
           <li>Copy the token (starts with <code>github_pat_</code>) and paste it here. It stays only in this browser.</li></ol>
         <div class="row-btns"><input type="password" id="pubTok" placeholder="github_pat_…" value="${esc(tok || '')}" autocomplete="off"><button class="btn primary" id="pubSave">Save & publish</button>${tok ? '<button class="btn ghost" id="pubForget">Disconnect</button>' : ''}</div></div>` : ''}`;
     const q = s => bar.querySelector(s);
