@@ -12,7 +12,7 @@
   try { if (localStorage.getItem('trd_admin') === 'bb132136cba17058787561571dffaa8bfe3d15bac2e1d651b5f0fb7f76dfd34b') document.documentElement.classList.add('admin'); } catch (e) { }
 </script>
 <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="assets/styles.css?v=202611031300">
+<link rel="stylesheet" href="assets/styles.css?v=202611031500">
 <script>
   window.addEventListener('error', function (e) {
     var b = document.getElementById('jsErr');
@@ -20,8 +20,8 @@
     b.innerHTML = '⚠ The page did not load completely (' + (e.message || 'script error') + '). Press <b>Ctrl + F5</b> to reload the latest version.';
   });
 </script>
-<script src="assets/vendor/chart.umd.min.js?v=202611031300"></script>
-<script src="assets/vendor/xlsx.full.min.js?v=202611031300"></script>
+<script src="assets/vendor/chart.umd.min.js?v=202611031500"></script>
+<script src="assets/vendor/xlsx.full.min.js?v=202611031500"></script>
 </head>
 <body>
 <header class="topbar">
@@ -287,6 +287,11 @@
         </div>
       </div>
       <div class="card">
+        <div class="card-h"><h3>1b · Invoice (IPC) — add a new one or update one</h3></div>
+        <p>Type the figures from the IPC cover / summary page — recovery, VAT and net are calculated — and, if you have them, the amounts per section and the BOQ quantities (Excel). Paste the Google Drive link of the IPC so anyone can open it from the Financial page. Saved IPCs are published to the public link from the bar at the top.</p>
+        <div id="ipcImport"><p class="muted small">Loading…</p></div>
+      </div>
+      <div class="card">
         <div class="card-h"><h3>2 · Primavera P6 schedule (.xer)</h3></div>
         <p>Drop the <b>baseline</b> and the latest <b>weekly update</b>. They feed the look-ahead, achieved activities, Gantt chart and the cost / performance forecast. Files are parsed in your browser — nothing is uploaded.</p>
         <label class="chk" style="margin-bottom:8px">Programme <select id="xerProg"></select></label>
@@ -364,18 +369,18 @@
 </footer>
 
 <div id="tooltipHost"></div>
-<script src="data/default-data.js?v=202611031300"></script>
-<script src="assets/xer.js?v=202611031300"></script>
-<script src="assets/app.js?v=202611031300"></script>
-<script src="assets/schedule.js?v=202611031300"></script>
-<script src="assets/weekly.js?v=202611031300"></script>
-<script src="assets/logic.js?v=202611031300"></script>
-<script src="assets/outlook.js?v=202611031300"></script>
-<script src="assets/revise.js?v=202611031300"></script>
-<script src="assets/events.js?v=202611031300"></script>
-<script src="assets/jmedia.js?v=202611031300"></script>
-<script src="assets/publish.js?v=202611031300"></script>
-<script src="assets/explorer.js?v=202611031300"></script>
-<script src="assets/print.js?v=202611031300"></script>
+<script src="data/default-data.js?v=202611031500"></script>
+<script src="assets/xer.js?v=202611031500"></script>
+<script src="assets/app.js?v=202611031500"></script>
+<script src="assets/schedule.js?v=202611031500"></script>
+<script src="assets/weekly.js?v=202611031500"></script>
+<script src="assets/logic.js?v=202611031500"></script>
+<script src="assets/outlook.js?v=202611031500"></script>
+<script src="assets/revise.js?v=202611031500"></script>
+<script src="assets/events.js?v=202611031500"></script>
+<script src="assets/jmedia.js?v=202611031500"></script>
+<script src="assets/publish.js?v=202611031500"></script>
+<script src="assets/explorer.js?v=202611031500"></script>
+<script src="assets/print.js?v=202611031500"></script>
 </body>
 </html>

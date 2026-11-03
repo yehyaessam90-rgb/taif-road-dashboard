@@ -27,7 +27,8 @@
       status: ['status'],
       paid: ['paidamount', 'paid'],
       paidDate: ['paiddate'],
-      remarks: ['remarks', 'comments']
+      remarks: ['remarks', 'comments'],
+      doc: ['documentlink', 'document', 'link', 'ipcdocument']
     },
     Sections: {
       code: ['section', 'sectionno', 'code'],
@@ -159,7 +160,7 @@
         ipc: String(r.ipc).trim(), from: iso(toDate(r.from)), to: iso(toDate(r.to)),
         work: num(r.work), recovery: Math.abs(num(r.recovery)), vat: r.vat === '' ? null : num(r.vat),
         retention: num(r.retention), net: r.net === '' ? null : num(r.net),
-        status: String(r.status || '').trim(), paid: num(r.paid), paidDate: iso(toDate(r.paidDate)), remarks: r.remarks || ''
+        status: String(r.status || '').trim(), paid: num(r.paid), paidDate: iso(toDate(r.paidDate)), remarks: r.remarks || '', doc: String(r.doc || '').trim()
       })),
       sections: sec && sec.filter(r => String(r.code || '').trim()).map(r => ({
         code: String(r.code).trim(), desc: String(r.desc || '').trim(), contract: num(r.contract),
@@ -210,8 +211,8 @@
       ['Planned Completion Date', p.finish], ['Data Date', p.dataDate]];
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(projRows), 'Project');
     const add = (name, head, rows) => XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([head, ...rows]), name);
-    add('Invoices', ['IPC No', 'Period From', 'Period To', 'Work Done (excl VAT)', 'Advance Recovery (excl VAT)', 'VAT', 'Retention (incl VAT)', 'Net Certified (incl VAT)', 'Status', 'Paid Amount', 'Paid Date', 'Remarks'],
-      m.invoices.map(r => [r.ipc, r.from, r.to, r.work, r.recovery, r.vat, r.retention, r.net, r.status, r.paid, r.paidDate, r.remarks]));
+    add('Invoices', ['IPC No', 'Period From', 'Period To', 'Work Done (excl VAT)', 'Advance Recovery (excl VAT)', 'VAT', 'Retention (incl VAT)', 'Net Certified (incl VAT)', 'Status', 'Paid Amount', 'Paid Date', 'Remarks', 'Document Link'],
+      m.invoices.map(r => [r.ipc, r.from, r.to, r.work, r.recovery, r.vat, r.retention, r.net, r.status, r.paid, r.paidDate, r.remarks, r.doc || '']));
     add('Sections', ['Section', 'Description', 'Contract Amount', 'Previous Amount', 'Current Amount', 'Cumulative Amount', 'Planned % To Date'],
       m.sections.map(r => [r.code, r.desc, r.contract, r.prev, r.curr, r.cum, r.plannedPct]));
     add('BOQ_Items', ['Bill', 'Item No', 'Description', 'Unit', 'Contract Qty', 'Unit Rate', 'Contract Amount', 'Previous Qty', 'Current Qty', 'To-Date Qty', 'Current Amount', 'To-Date Amount'],
@@ -728,7 +729,7 @@
       return {
         title: `${ipcName(r.ipc)} — Interim Payment Certificate`,
         sub: `${fmtDate(r.from)} → ${fmtDate(r.to)} · ${days} days · ${statusTag(r.status)}`,
-        body: tiles([
+        body: (r.doc ? `<div class="row-btns" style="margin-bottom:10px"><a class="btn primary" href="${esc(r.doc)}" target="_blank" rel="noopener">📄 Open the IPC document</a></div>` : '') + tiles([
           ['Work done (excl. VAT)', sar(r.work), chg !== null ? `${chg >= 0 ? '▲' : '▼'} ${fmtP(Math.abs(chg), 1)} vs ${ipcName(prev.ipc)}` : 'First IPC'],
           ['Advance recovery', '(' + fmt(r.recovery) + ')', fmtP(r.work ? r.recovery / r.work * 100 : 0, 1) + ' of work done'],
           ['After recovery', sar(r.after)],
@@ -997,6 +998,164 @@
     } catch (e) { log(['✗ Import failed: ' + e.message]); }
   });
   $('#exportBtn').onclick = () => XLSX.writeFile(modelToWb(M), 'project-data.xlsx');
+
+  // ---------- add / edit an invoice (IPC) ----------
+  const IF = { sel: 'new', qty: null, manual: {} };
+  const billKey = code => String(code).replace(/^section\s*/i, '').replace(/^0+(?=\d)/, '').toUpperCase();
+  const itemKey = v => String(v ?? '').replace(/\s+/g, '').replace(/\.$/, '').toUpperCase();
+  const r2 = v => Math.round(v * 100) / 100;
+  // BOQ quantities workbook: any sheet with an item-number column and a to-date (or this-period) quantity column
+  function readQty(wb) {
+    let best = null;
+    wb.SheetNames.forEach(sn => {
+      const rows = XLSX.utils.sheet_to_json(wb.Sheets[sn], { header: 1, raw: true, defval: '' });
+      for (let h = 0; h < Math.min(rows.length, 25); h++) {
+        const H = rows[h].map(x => norm(x));
+        const ci = H.findIndex(x => /^(itemno|item|itemnumber|boqitem|ref|refno)$/.test(x));
+        const ct = H.findIndex(x => /(todate|cumulative|uptodate|uptothisperiod|totaltodate)/.test(x) && /qty|quantity/.test(x));
+        const cc = H.findIndex(x => /(current|thisperiod|thismonth)/.test(x) && /qty|quantity/.test(x));
+        const cp = H.findIndex(x => /(previous)/.test(x) && /qty|quantity/.test(x));
+        if (ci < 0 || (ct < 0 && cc < 0)) continue;
+        const map = {}; let n = 0;
+        rows.slice(h + 1).forEach(r => { const k = itemKey(r[ci]); if (!k) return; const t = ct >= 0 && r[ct] !== '' ? num(r[ct]) : null, c = cc >= 0 && r[cc] !== '' ? num(r[cc]) : null, pq = cp >= 0 && r[cp] !== '' ? num(r[cp]) : null; if (t === null && c === null) return; map[k] = { t, c, p: pq }; n++; });
+        if (!best || n > best.n) best = { sheet: sn, map, n, mode: ct >= 0 ? 'to-date' : 'this period' };
+        break;
+      }
+    });
+    return best;
+  }
+  // this period per item and per section from the quantities file
+  function qtyPlan() {
+    if (!IF.qty) return null;
+    const bySec = {}, items = [];
+    let matched = 0, amt = 0;
+    M.items.forEach(i => {
+      const q = IF.qty.map[itemKey(i.item)];
+      if (!q) return;
+      matched++;
+      const tq = q.t !== null ? q.t : i.tqty + (q.c || 0);
+      const cur = tq - i.tqty;
+      if (Math.abs(cur) < 1e-9) return;
+      const a = cur * i.rate;
+      items.push([i, tq, cur, a]); amt += a;
+      const k = billKey(i.bill); bySec[k] = (bySec[k] || 0) + a;
+    });
+    const known = new Set(M.items.map(i => itemKey(i.item)));
+    const unknown = Object.keys(IF.qty.map).filter(k => !known.has(k));
+    return { bySec, items, matched, unknown, amt };
+  }
+  function ipcFormHtml() {
+    const p = M.project, D = derive(M), inv = D.inv, last = inv[inv.length - 1];
+    const edit = IF.sel !== 'new' ? M.invoices.find(r => String(r.ipc) === IF.sel) : null;
+    const nextNo = Math.max(0, ...M.invoices.map(r => parseInt(r.ipc, 10) || 0)) + 1;
+    const dPlus = (s, n) => { const d = toDate(s); return d ? iso(new Date(d.getTime() + n * 864e5)) : ''; };
+    const nextFrom = last ? dPlus(last.to, 1) : '';
+    const nextTo = last && toDate(last.to) ? (() => { const d = toDate(last.to); return iso(new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, d.getUTCDate()))); })() : '';
+    const v = edit || { ipc: String(nextNo), from: nextFrom, to: nextTo, work: '', recovery: '', vat: '', retention: 0, net: '', status: 'Submitted', paid: '', paidDate: '', remarks: '', doc: '' };
+    const Q = edit ? null : qtyPlan();
+    const f = (id, label, val, type = 'number', wide) => `<label class="cut-f${wide ? ' ev-wide' : ''}">${label}<input id="${id}" type="${type}" ${type === 'number' ? 'step="0.01"' : ''} value="${esc(val ?? '')}"></label>`;
+    return `<div class="ev-form">
+        <label class="cut-f">Invoice<select id="ipSel"><option value="new" ${!edit ? 'selected' : ''}>➕ New IPC (No. ${nextNo})</option>${[...M.invoices].reverse().map(r => `<option value="${esc(r.ipc)}" ${edit && r.ipc === edit.ipc ? 'selected' : ''}>Edit IPC-${String(r.ipc).padStart(2, '0')} · ${esc(r.status || '')}</option>`).join('')}</select></label>
+        ${f('ipNo', 'IPC No.', v.ipc, 'text')}${f('ipFrom', 'Period from', v.from || '', 'date')}${f('ipTo', 'Period to', v.to || '', 'date')}
+        <label class="cut-f">Status<select id="ipStatus">${['Submitted', 'Under review', 'Certified', 'Paid', 'Rejected'].map(x => `<option ${x === (v.status || 'Submitted') ? 'selected' : ''}>${x}</option>`).join('')}</select></label>
+      </div>
+      <div class="ev-form">
+        ${f('ipWork', 'Work done this IPC (SAR excl. VAT)', v.work)}
+        ${f('ipRec', `Advance recovery (${p.advPct || 10}% — auto)`, v.recovery)}
+        ${f('ipVat', `VAT (${p.vat || 15}% — auto)`, v.vat ?? '')}
+        ${f('ipRet', 'Retention (incl. VAT)', v.retention || 0)}
+        ${f('ipNet', 'Net certified incl. VAT (auto)', v.net ?? '')}
+      </div>
+      <div class="ev-form">${f('ipPaid', 'Paid amount', v.paid || '')}${f('ipPaidD', 'Paid date', v.paidDate || '', 'date')}${f('ipDoc', 'Document link (Google Drive …)', v.doc || '', 'url', true)}${f('ipRem', 'Remarks', v.remarks || '', 'text', true)}</div>
+      ${edit ? '<p class="muted small">Editing changes the IPC row only (dates, amounts, status, payment, link). Section and BOQ quantities stay as they are.</p>' : `
+      <h4 class="dsec">Quantities (optional) — BOQ to-date or this-period quantities</h4>
+      <label class="drop" id="ipQDrop"><input type="file" id="ipQFile" accept=".xlsx,.xls,.csv"><span class="drop-ic">▦</span><span><b>Drop the IPC quantities workbook</b> (Excel) or click to browse</span><span class="muted small">Needs an <b>Item No</b> column and a <b>To-Date Qty</b> (or Current / This Period Qty) column — e.g. the IPA measurement sheet, or <a href="#" id="ipQTpl">this template</a></span></label>
+      ${Q ? `<div class="dnote">✓ ${esc(IF.qty.name)} · sheet “${esc(IF.qty.sheet)}” (${IF.qty.mode} quantities): <b>${Q.matched}</b> BOQ items matched, ${Q.items.length} changed this period worth <b>SAR ${fmt(Q.amt)}</b>${Q.unknown.length ? ` · <span class="neg">${Q.unknown.length} item no. not in the BOQ: ${esc(Q.unknown.slice(0, 8).join(', '))}${Q.unknown.length > 8 ? '…' : ''}</span>` : ''} <button class="btn ghost" id="ipQClear">remove</button></div>` : ''}
+      <h4 class="dsec">This IPC by section (SAR excl. VAT) — from the BOQ summary page of the IPC${Q ? ' (filled from the quantities)' : ''}</h4>
+      <div class="table-wrap"><table class="tbl"><thead><tr><th>Section</th><th>Description</th><th class="n">Contract</th><th class="n">Previous (to IPC-${last ? String(last.ipc).padStart(2, '0') : '—'})</th><th class="n">This IPC</th><th class="n">Cumulative</th></tr></thead><tbody>
+        ${M.sections.map((x, i) => { const auto = Q ? r2(Q.bySec[billKey(x.code)] || 0) : ''; const val = IF.manual[i] !== undefined ? IF.manual[i] : auto; return `<tr><td><b>${esc(x.code)}</b></td><td class="small">${esc(x.desc)}</td><td class="n">${fmt(x.contract)}</td><td class="n">${fmt(x.cum)}</td><td class="n"><input type="number" step="0.01" class="ip-sec" data-i="${i}" value="${val}" style="width:130px"></td><td class="n" data-cum="${i}">${fmt(x.cum + (num(val) || 0))}</td></tr>`; }).join('')}
+      </tbody><tfoot><tr><td colspan="4"><b>Total this IPC</b></td><td class="n"><b id="ipSecTot">—</b></td><td id="ipSecChk" class="small"></td></tr></tfoot></table></div>`}
+      <div class="row-btns"><button class="btn primary" id="ipSave">${edit ? 'Save changes' : 'Add IPC-' + String(v.ipc).padStart(2, '0')}</button><span id="ipMsg" class="muted small"></span></div>`;
+  }
+  function renderIpcForm() {
+    const host = $('#ipcImport');
+    if (!host || !M) return;
+    host.innerHTML = ipcFormHtml();
+    const g = id => $('#' + id), p = M.project;
+    const recalc = src => {
+      const w = num(g('ipWork').value);
+      if (src !== 'ipRec' && !IF.recManual) g('ipRec').value = w ? r2(w * (p.advPct || 10) / 100) : '';
+      const rec = num(g('ipRec').value);
+      if (src !== 'ipVat' && !IF.vatManual) g('ipVat').value = w ? r2((w - rec) * (p.vat || 15) / 100) : '';
+      if (src !== 'ipNet') g('ipNet').value = w ? r2(w - rec + num(g('ipVat').value) - num(g('ipRet').value)) : '';
+      secTot();
+    };
+    const secTot = () => {
+      const ins = [...host.querySelectorAll('.ip-sec')];
+      if (!ins.length) return;
+      let t = 0;
+      ins.forEach(x => { const i = +x.dataset.i, val = num(x.value); t += val; host.querySelector(`[data-cum="${i}"]`).textContent = fmt(M.sections[i].cum + val); });
+      g('ipSecTot').textContent = fmt(t);
+      const w = num(g('ipWork').value), d = t - w;
+      g('ipSecChk').innerHTML = !t ? '<span class="muted">enter the section amounts (optional)</span>' : Math.abs(d) < 1 ? '<span class="pos">✓ equals the work done</span>' : `<span class="neg">differs from the work done by ${fmt(d)}</span>`;
+    };
+    g('ipSel').onchange = e => { IF.sel = e.target.value; IF.qty = null; IF.manual = {}; IF.recManual = IF.vatManual = !!M.invoices.find(r => String(r.ipc) === IF.sel); renderIpcForm(); };
+    g('ipWork').oninput = () => recalc('ipWork');
+    g('ipRec').oninput = () => { IF.recManual = true; recalc('ipRec'); };
+    g('ipVat').oninput = () => { IF.vatManual = true; recalc('ipVat'); };
+    g('ipRet').oninput = () => recalc('ipRet');
+    host.querySelectorAll('.ip-sec').forEach(x => x.oninput = () => { IF.manual[+x.dataset.i] = x.value; secTot(); });
+    if (g('ipQDrop')) {
+      wireDrop('ipQDrop', 'ipQFile', async file => {
+        try {
+          const q = readQty(XLSX.read(await file.arrayBuffer()));
+          if (!q) { g('ipMsg').innerHTML = '<span class="neg">✗ No sheet with an Item No column and a To-Date / Current Qty column was found.</span>'; return; }
+          IF.qty = Object.assign(q, { name: file.name }); IF.manual = {};
+          const keep = { work: g('ipWork').value, from: g('ipFrom').value, to: g('ipTo').value, doc: g('ipDoc').value, rem: g('ipRem').value, no: g('ipNo').value, st: g('ipStatus').value };
+          renderIpcForm();
+          g('ipFrom').value = keep.from; g('ipTo').value = keep.to; g('ipDoc').value = keep.doc; g('ipRem').value = keep.rem; g('ipNo').value = keep.no; g('ipStatus').value = keep.st;
+          g('ipWork').value = keep.work || r2(qtyPlan().amt); $('#ipWork').dispatchEvent(new Event('input'));
+        } catch (e) { g('ipMsg').innerHTML = '<span class="neg">✗ ' + esc(e.message) + '</span>'; }
+      });
+      g('ipQTpl').onclick = e => { e.preventDefault(); const ws = XLSX.utils.aoa_to_sheet([['Item No', 'Description', 'To-Date Qty'], ...M.items.map(i => [i.item, i.desc, i.tqty])]); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Quantities'); XLSX.writeFile(wb, 'IPC_quantities_template.xlsx'); };
+      if (g('ipQClear')) g('ipQClear').onclick = () => { IF.qty = null; IF.manual = {}; renderIpcForm(); };
+    }
+    g('ipSave').onclick = saveIpc;
+    if (!M.invoices.find(r => String(r.ipc) === IF.sel)) recalc('init');
+    secTot();
+  }
+  function saveIpc() {
+    const g = id => $('#' + id), msg = t => { g('ipMsg').innerHTML = t; };
+    const no = g('ipNo').value.trim(), work = num(g('ipWork').value);
+    if (!no || !g('ipFrom').value || !g('ipTo').value) return msg('<span class="neg">✗ IPC No. and the period are required.</span>');
+    if (!work) return msg('<span class="neg">✗ Enter the work done (SAR excl. VAT).</span>');
+    const row = { ipc: no, from: g('ipFrom').value, to: g('ipTo').value, work, recovery: Math.abs(num(g('ipRec').value)), vat: g('ipVat').value === '' ? null : num(g('ipVat').value),
+      retention: num(g('ipRet').value), net: g('ipNet').value === '' ? null : num(g('ipNet').value), status: g('ipStatus').value, paid: num(g('ipPaid').value), paidDate: g('ipPaidD').value || '', remarks: g('ipRem').value.trim(), doc: g('ipDoc').value.trim() };
+    const edit = IF.sel !== 'new';
+    if (edit) {
+      const i = M.invoices.findIndex(r => String(r.ipc) === IF.sel);
+      M.invoices[i] = Object.assign({}, M.invoices[i], row);
+    } else {
+      if (M.invoices.some(r => String(r.ipc) === no)) return msg(`<span class="neg">✗ IPC ${esc(no)} already exists — choose it in the list to edit it.</span>`);
+      const lines = ['Added IPC-' + String(no).padStart(2, '0') + ': SAR ' + fmt(work)];
+      // sections: previous ← cumulative, this IPC as entered
+      const vals = [...document.querySelectorAll('.ip-sec')].map(x => num(x.value));
+      if (vals.some(v => v)) { M.sections.forEach((x, i) => { x.prev = x.cum; x.curr = vals[i] || 0; x.cum = x.prev + x.curr; }); lines.push('Sections updated (this IPC total SAR ' + fmt(vals.reduce((a, b) => a + b, 0)) + ')'); }
+      else M.sections.forEach(x => { x.prev = x.cum; x.curr = 0; });
+      // BOQ items: previous ← to-date, then the new to-date from the quantities file
+      const Q = qtyPlan(), upd = new Map(Q ? Q.items.map(([i, tq]) => [i, tq]) : []);
+      M.items.forEach(i => { i.pqty = i.tqty; const tq = upd.has(i) ? upd.get(i) : i.tqty; i.tqty = tq; i.qqty = tq - i.pqty; i.qamt = i.qqty * i.rate; i.tamt = i.tqty * i.rate; });
+      if (Q) lines.push(Q.items.length + ' BOQ items with quantities this period');
+      M.invoices.push(row);
+      M.project.dataDate = row.to;
+      IF.qty = null; IF.manual = {}; IF.sel = 'new';
+      log(lines);
+    }
+    SOURCE = 'Imported: IPC form';
+    save({ file: 'IPC-' + String(no).padStart(2, '0') + ' (form)', at: new Date().toISOString() });
+    render(); renderIpcForm();
+    $('#ipMsg').innerHTML = `✓ IPC-${String(no).padStart(2, '0')} ${edit ? 'updated' : 'added'} — the Financial page shows it now${window.PUBLISHER ? '; it is published to the public link from the bar at the top' : ''}.`;
+  }
   $('#resetBtn').onclick = resetData;
   function resetData() {
     try { localStorage.removeItem(LS_KEY); } catch (e) { }
@@ -1034,6 +1193,7 @@
     }
     M = model;
     render();
+    renderIpcForm();
     ready.splice(0).forEach(fn => fn());
   }
   try { const th = localStorage.getItem('trd_theme'); if (th) document.documentElement.dataset.theme = th; } catch (e) { }
