@@ -1352,7 +1352,8 @@
         out.push({ id: 'sched-' + p.id, label: 'Schedule — ' + p.name, path: p.file, key: txt, bytes: () => new TextEncoder().encode(txt), guard, older: 'older than the programme on the site — clear it in Import › 2 (Clear local schedules)' });
       }
       const sl = await idbGet('slides');
-      if (sl) { const t = JSON.stringify(sl); out.push({ id: 'slides', label: 'Junction slide images (legacy)', path: 'data/slides.json', key: t, bytes: () => new TextEncoder().encode(t) }); }
+      // legacy slide images are not shown once weekly PowerPoints exist — nothing to publish then
+      if (sl && !(window.JMEDIA && JMEDIA.has())) { const t = JSON.stringify(sl); out.push({ id: 'slides', label: 'Junction slide images (legacy)', path: 'data/slides.json', key: t, bytes: () => new TextEncoder().encode(t) }); }
       return out;
     }
   };

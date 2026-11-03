@@ -24,14 +24,44 @@
     const x = A.localData && A.localData();
     if (x) out.push({ id: 'xlsx', label: 'Financial workbook (IPC / BOQ / spending)', path: 'data/project-data.xlsx', ...x });
     if (window.SCHEDX && SCHEDX.localData) out.push(...await SCHEDX.localData());
-    if (window.WEEKLY && WEEKLY.localData) { const w = await WEEKLY.localData(); if (w) out.push({ id: 'weekly', label: 'Weekly reports', path: 'data/weekly.json', ...w }); }
+    if (window.WEEKLY && WEEKLY.localData) { const w = await WEEKLY.localData(); if (w) out.push({ id: 'weekly', label: 'Weekly reports', path: 'data/weekly.json', pubKey: x => JSON.stringify(JSON.parse(x).weeks), ...w }); }
     const site = await idbRead('trd_site', 'kv', 'site');
-    if (site) { const t = JSON.stringify(site); out.push({ id: 'site', label: 'Site manpower & equipment sheet', path: 'data/site-resources.json', key: t, bytes: () => enc(t) }); }
+    if (site) { const t = JSON.stringify(site); out.push({ id: 'site', label: 'Site manpower & equipment sheet', path: 'data/site-resources.json', key: t, bytes: () => enc(t), pubKey: x => JSON.stringify(JSON.parse(x)) }); }
     const ev = ls.get('trd_events');
-    if (ev) { const d = JSON.parse(ev), t = JSON.stringify(d.events); out.push({ id: 'events', label: 'Events (NCO letters)', path: 'data/events.json', key: t, bytes: () => enc(JSON.stringify(Object.assign({}, d, { updated: new Date().toISOString().slice(0, 10) }), null, 2)) }); }
+    if (ev) { const d = JSON.parse(ev), t = JSON.stringify(d.events); out.push({ id: 'events', label: 'Events (NCO letters)', path: 'data/events.json', key: t, pubKey: x => JSON.stringify(JSON.parse(x).events), bytes: () => enc(JSON.stringify(Object.assign({}, d, { updated: new Date().toISOString().slice(0, 10) }), null, 2)) }); }
     const H = hashes();
-    for (const it of out) { it.hash = await sha256(it.key); it.pending = H[it.id] !== it.hash; }
+    let save = false;
+    for (const it of out) {
+      it.hash = await sha256(it.key); it.pending = H[it.id] !== it.hash;
+      // the same content may already be on the site (published earlier, or uploaded by hand)
+      if (it.pending && it.id !== 'xlsx' && (await pubHash(it)) === it.hash) { H[it.id] = it.hash; it.pending = false; save = true; }
+    }
+    if (save) ls.set(HASH, JSON.stringify(H));
     return out;
+  }
+
+  const PUBH = {};   // path → hash of the published file's comparable content (this page view)
+  async function pubHash(it) {
+    if (PUBH[it.path] === undefined) {
+      PUBH[it.path] = null;
+      try { const r = await fetch(it.path, { cache: 'no-store' }); if (r.ok) { const t = await r.text(); PUBH[it.path] = await sha256(it.pubKey ? it.pubKey(t) : t); } } catch (e) { }
+    }
+    return PUBH[it.path];
+  }
+
+  // a 401 / 403 / 404 from GitHub → say exactly what to change on the token
+  async function diagnose(tok, err) {
+    const { o, r } = repo(), H = { Authorization: 'Bearer ' + tok, Accept: 'application/vnd.github+json' };
+    const fix = 'Open <a href="https://github.com/settings/personal-access-tokens" target="_blank" rel="noopener">github.com › Settings › Developer settings › Fine-grained tokens</a> → click the token → <b>Edit</b>';
+    try {
+      const u = await fetch('https://api.github.com/user', { headers: H });
+      if (u.status === 401) return `✗ GitHub does not accept this token (wrong, expired or deleted). Create a new one and paste it with ⚙.`;
+      const me = u.ok ? (await u.json()).login : '';
+      const rp = await fetch(`https://api.github.com/repos/${o}/${r}`, { headers: H });
+      if (me && me.toLowerCase() !== o.toLowerCase()) return `✗ The token belongs to the GitHub account <b>${esc(me)}</b>, but the site is in <b>${esc(o)}</b>. Sign in to GitHub as <b>${esc(o)}</b> and create the token there.`;
+      if (!rp.ok) return `✗ The token cannot see the repository <b>${esc(r)}</b>. ${fix} → <b>Repository access</b>: choose <b>Only select repositories</b> and pick <b>${esc(r)}</b> → Save.`;
+      return `✗ The token can <b>read</b> the repository but not <b>write</b> to it. ${fix} → <b>Repository access</b>: <b>Only select repositories</b> → <b>${esc(r)}</b> (not "Public repositories (read-only)"), then <b>Permissions › Repository permissions › Contents</b> → change <b>Read-only</b> to <b>Read and write</b> → <b>Update</b>. The same token keeps working — no need to paste it again.`;
+    } catch (e) { return '✗ ' + esc(err.message); }
   }
 
   // ---------------- GitHub ----------------
@@ -80,13 +110,13 @@
       let n = 0;
       if (list.length) {
         n += await commitFiles(tok, list, 'Publish from the dashboard: ' + list.map(i => i.label).join(', '), msg);
-        const H = hashes(); list.forEach(i => { H[i.id] = i.hash; }); ls.set(HASH, JSON.stringify(H));
+        const H = hashes(); list.forEach(i => { H[i.id] = i.hash; delete PUBH[i.path]; }); ls.set(HASH, JSON.stringify(H));
       }
       if (window.JMEDIA && JMEDIA.pending()) { msg('Publishing junction presentations / photos…'); n += await JMEDIA.publish(tok, msg) || 0; }
       if (skipped.length) { LAST = skipped.map(i => `⚠ Not published: ${esc(i.label)} in this browser is ${esc(i.older)}.`).join('<br>'); BUSY = false; await refresh(); return; }
       LAST = `✓ ${auto ? 'Auto-published' : 'Published'} ${new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}${n ? ` — ${n} file${n === 1 ? '' : 's'}` : ' — the site already had everything'}. The public link shows it within 1–2 minutes.`;
     } catch (e) {
-      LAST = '✗ ' + esc(e.message) + (/401|403|404/.test(e.message) ? ' — check the token: repository access to taif-road-dashboard, Contents: Read and write.' : '');
+      LAST = /GitHub (401|403|404)/.test(e.message) ? await diagnose(tok, e) : '✗ ' + esc(e.message);
     }
     BUSY = false;
     await refresh();

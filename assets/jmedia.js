@@ -68,6 +68,9 @@
     const onSite = new Set(); PUB.weeks.forEach(w => onSite.add(w.file)); PUB.daily.forEach(g => g.photos.forEach(p => onSite.add(p.file)));
     const n0 = OPS.length;
     OPS = OPS.filter(o => !(o.op === 'addPhotos' && o.photos.every(p => onSite.has(p.file))) && !(o.op === 'addWeek' && PUB.weeks.some(w => w.file === o.week.file && w.size === o.week.size)));
+    // changes whose result is already exactly what the site shows are done
+    const norm = x => JSON.stringify({ w: x.weeks.map(w => w.date + '|' + w.file).sort(), d: x.daily.map(g => g.date + '|' + g.key + ':' + g.photos.map(p => p.file).sort().join(',')).sort() });
+    if (OPS.length && norm(apply(PUB, OPS)) === norm(apply(PUB, []))) OPS = [];
     if (OPS.length !== n0) await kvSet('state', { ops: OPS });
     // a publish made in this browser may not be live on GitHub Pages yet
     const just = await kvGet('published');
