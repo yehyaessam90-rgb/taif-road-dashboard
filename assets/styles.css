@@ -638,3 +638,20 @@ body.printing main { padding: 0; }
 .jm-mact { align-items: center; position: sticky; bottom: 0; background: var(--surface); padding: 8px 0; }
 .jm-mact select, .jm-mact input { font: inherit; font-size: 13px; padding: 5px 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-2); color: var(--text); }
 .jm-adm { margin-top: 6px; }
+
+/* publish bar (owner) + viewer refresh notice */
+.pub-bar { margin: 12px 24px 0; padding: 10px 14px; border-radius: 12px; border: 1px solid var(--border); background: var(--surface); box-shadow: var(--shadow); }
+.pub-bar.pending { border-color: var(--warn); background: color-mix(in srgb, var(--warn) 9%, var(--surface)); }
+.pub-bar.ok { border-color: color-mix(in srgb, var(--good) 45%, var(--border)); }
+.pub-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.pub-ic { font-size: 18px; font-weight: 800; width: 22px; text-align: center; }
+.pub-bar.pending .pub-ic { color: var(--warn); } .pub-bar.ok .pub-ic { color: var(--good); } .pub-bar.busy .pub-ic { color: var(--brand); animation: pubspin 1s linear infinite; }
+@keyframes pubspin { to { transform: rotate(360deg); } }
+.pub-txt { flex: 1 1 320px; font-size: 13.5px; min-width: 0; }
+.pub-btns { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.pub-set { margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--border); }
+.pub-set ol { margin: 6px 0 10px 18px; padding: 0; }
+.pub-set input { flex: 1 1 260px; font: inherit; font-size: 14px; padding: 7px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-2); color: var(--text); }
+.new-data { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 60; display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-radius: 12px; background: var(--surface); border: 1px solid var(--brand); box-shadow: 0 8px 28px rgba(0,0,0,.18); font-size: 14px; max-width: calc(100vw - 32px); }
+@media (max-width: 600px) { .pub-bar { margin: 10px 16px 0; } }
+@media print { .pub-bar, .new-data { display: none !important; } }

@@ -30,7 +30,7 @@
     EV.events.forEach(sortLetters);
     render(); renderImport();
   }
-  function saveLocal() { try { localStorage.setItem(KEY, JSON.stringify(EV)); } catch (e) { } SRC = 'local edits (not published)'; }
+  function saveLocal() { try { localStorage.setItem(KEY, JSON.stringify(EV)); } catch (e) { } SRC = 'local edits (not published)'; if (window.PUBLISHER) PUBLISHER.changed(); }
 
   // P6 activities that the event touches (name pattern of the event)
   function related(e) {

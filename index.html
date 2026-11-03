@@ -12,7 +12,7 @@
   try { if (localStorage.getItem('trd_admin') === 'bb132136cba17058787561571dffaa8bfe3d15bac2e1d651b5f0fb7f76dfd34b') document.documentElement.classList.add('admin'); } catch (e) { }
 </script>
 <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="assets/styles.css?v=202611011300">
+<link rel="stylesheet" href="assets/styles.css?v=202611031000">
 <script>
   window.addEventListener('error', function (e) {
     var b = document.getElementById('jsErr');
@@ -20,8 +20,8 @@
     b.innerHTML = '⚠ The page did not load completely (' + (e.message || 'script error') + '). Press <b>Ctrl + F5</b> to reload the latest version.';
   });
 </script>
-<script src="assets/vendor/chart.umd.min.js?v=202611011300"></script>
-<script src="assets/vendor/xlsx.full.min.js?v=202611011300"></script>
+<script src="assets/vendor/chart.umd.min.js?v=202611031000"></script>
+<script src="assets/vendor/xlsx.full.min.js?v=202611031000"></script>
 </head>
 <body>
 <header class="topbar">
@@ -61,6 +61,7 @@
   <button class="tab import admin-only" data-tab="import">⇪ Import File</button>
 </nav>
 
+<div id="pubBar" class="pub-bar admin-only"></div>
 <div id="banner" class="banner hidden"></div>
 
 <main>
@@ -342,6 +343,7 @@
     </div>
     <div class="card">
       <div class="card-h"><h3>Publish for everyone (GitHub)</h3></div>
+      <p><b>Easiest:</b> connect GitHub once in the bar at the top of the page (⚙) — every import is then published automatically and the public link updates by itself. The manual steps below are only needed without that connection; upload each file with exactly the name shown (e.g. <code>schedule.json</code>, not <code>schedule (1).json</code>) and unzip zips before uploading.</p>
       <ol class="steps">
         <li>Fill the workbook and check it here using <b>Import</b> (only you see it — stored in your browser).</li>
         <li>When correct, click <b>Export what’s loaded</b> (or use your file), rename it to <code>project-data.xlsx</code>.</li>
@@ -362,17 +364,18 @@
 </footer>
 
 <div id="tooltipHost"></div>
-<script src="data/default-data.js?v=202611011300"></script>
-<script src="assets/xer.js?v=202611011300"></script>
-<script src="assets/app.js?v=202611011300"></script>
-<script src="assets/schedule.js?v=202611011300"></script>
-<script src="assets/weekly.js?v=202611011300"></script>
-<script src="assets/logic.js?v=202611011300"></script>
-<script src="assets/outlook.js?v=202611011300"></script>
-<script src="assets/revise.js?v=202611011300"></script>
-<script src="assets/events.js?v=202611011300"></script>
-<script src="assets/jmedia.js?v=202611011300"></script>
-<script src="assets/explorer.js?v=202611011300"></script>
-<script src="assets/print.js?v=202611011300"></script>
+<script src="data/default-data.js?v=202611031000"></script>
+<script src="assets/xer.js?v=202611031000"></script>
+<script src="assets/app.js?v=202611031000"></script>
+<script src="assets/schedule.js?v=202611031000"></script>
+<script src="assets/weekly.js?v=202611031000"></script>
+<script src="assets/logic.js?v=202611031000"></script>
+<script src="assets/outlook.js?v=202611031000"></script>
+<script src="assets/revise.js?v=202611031000"></script>
+<script src="assets/events.js?v=202611031000"></script>
+<script src="assets/jmedia.js?v=202611031000"></script>
+<script src="assets/publish.js?v=202611031000"></script>
+<script src="assets/explorer.js?v=202611031000"></script>
+<script src="assets/print.js?v=202611031000"></script>
 </body>
 </html>

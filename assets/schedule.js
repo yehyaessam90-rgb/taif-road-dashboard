@@ -1242,10 +1242,10 @@
       slides.push({ n: i + 1, key: m ? 'J' + (m[1] || m[2]) : (order[i] || 'overview'), title: f.name.replace(/\.[^.]+$/, ''), date: $('#slDate').value || '', src: c.toDataURL('image/jpeg', .82) });
     }
     SLIDES = { v: 1, file: imgs.map(f => f.name).join(', '), exported: new Date().toISOString().slice(0, 10), slides };
-    await idbSet('slides', SLIDES);
+    await idbSet('slides', SLIDES); if (window.PUBLISHER) PUBLISHER.changed();
     st.innerHTML = `✓ ${slides.length} slides loaded: ` + slides.map((s, i) => `<label class="chk">${esc(s.title)} → <select data-sli="${i}">${['overview', 'J7', 'J5', 'J3', 'J1'].map(k => `<option ${k === s.key ? 'selected' : ''}>${k}</option>`).join('')}</select></label>`).join(' ') +
       '<br>Check the junction for each slide, then <b>Download slides.json</b> and upload it to <code>data/</code>.';
-    $$('[data-sli]').forEach(sel => sel.onchange = async () => { SLIDES.slides[+sel.dataset.sli].key = sel.value; await idbSet('slides', SLIDES); renderJunctions(); });
+    $$('[data-sli]').forEach(sel => sel.onchange = async () => { SLIDES.slides[+sel.dataset.sli].key = sel.value; await idbSet('slides', SLIDES); if (window.PUBLISHER) PUBLISHER.changed(); renderJunctions(); });
     renderJunctions();
   }
 
@@ -1272,7 +1272,7 @@
         S = combine(pe.b, pe.u, { b: pe.fb, u: pe.fu });
         index();
         PS[pid] = { S, X, src: 'local import' };
-        await idbSet('schedule:' + pid, S);
+        await idbSet('schedule:' + pid, S); if (window.PUBLISHER) PUBLISHER.changed();
         activate(pid);
         msg.push(`✓ ${esc(P.name)} ready: ${S.acts.length.toLocaleString()} activities. To publish: <b>Download</b> → upload <code>${P.out}</code> to <code>data/</code>.`);
         renderAll();
@@ -1339,7 +1339,22 @@
   window.SCHEDX = {
     get S() { return S; }, get X() { return X; }, get active() { return ACTIVE; }, PS, PROGRAMS, prog, withProg, RAW,
     wbsSet, wStats, fdt, setCut, parseCal, friday, isDone, isActive, isMs, finVar, critical, stTag, fd, ds, tbl, actDetail, wbsDetail, renderProgBars, renderJunctions: () => renderJunctions(), spread, DAY, junctions: () => junctions(), mk, monthLabel,
-    onChange: fn => LISTENERS.push(fn)
+    onChange: fn => LISTENERS.push(fn),
+    // for the publish bar: programmes imported in this browser
+    localData: async () => {
+      const out = [];
+      for (const p of PROGRAMS) {
+        let s = await idbGet('schedule:' + p.id); if (!s && p.id === 'tp') s = await idbGet('schedule');
+        if (!s) continue;
+        const { res, rdict, ...pub } = s; const txt = JSON.stringify(pub);
+        // never replace a newer programme on the site with an older copy kept in this browser
+        const guard = async () => { try { const r = await fetch(p.file, { cache: 'no-store' }); if (!r.ok) return true; const q = await r.json(); return (q.meta?.update?.dataDate || 0) <= (s.meta?.update?.dataDate || 0); } catch (e) { return true; } };
+        out.push({ id: 'sched-' + p.id, label: 'Schedule — ' + p.name, path: p.file, key: txt, bytes: () => new TextEncoder().encode(txt), guard, older: 'older than the programme on the site — clear it in Import › 2 (Clear local schedules)' });
+      }
+      const sl = await idbGet('slides');
+      if (sl) { const t = JSON.stringify(sl); out.push({ id: 'slides', label: 'Junction slide images (legacy)', path: 'data/slides.json', key: t, bytes: () => new TextEncoder().encode(t) }); }
+      return out;
+    }
   };
   wireFilters();
   wireImport();

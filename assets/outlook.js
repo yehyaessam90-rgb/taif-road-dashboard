@@ -350,7 +350,7 @@
       const wb = XLSX.read(await file.arrayBuffer());
       const s = readSiteSheet(wb, file.name);
       if (!s.groups.length) throw new Error('no manpower / equipment table found (first column = name, then one column per day)');
-      SITE = s; await idbSet('site', s);
+      SITE = s; await idbSet('site', s); if (window.PUBLISHER) PUBLISHER.changed();
       st.innerHTML = `✓ ${esc(file.name)}: ${s.groups.map(g => `${esc(g.name)} ${g.rows.length} rows`).join(' · ')} · days ${esc(s.days.join(', '))}<br>To publish: <b>Download site-resources.json</b> → upload to <code>data/</code>.`;
       renderOutlook();
     } catch (e) { st.innerHTML = '✗ ' + esc(e.message); }

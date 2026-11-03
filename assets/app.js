@@ -975,7 +975,7 @@
   const logEl = $('#importLog');
   function log(lines) { logEl.textContent = `[${new Date().toLocaleString()}]\n` + lines.join('\n'); }
   function save(meta) {
-    try { localStorage.setItem(LS_KEY, JSON.stringify({ model: M, meta })); }
+    try { localStorage.setItem(LS_KEY, JSON.stringify({ model: M, meta })); if (window.PUBLISHER) PUBLISHER.changed(); }
     catch (e) { log(['⚠ Could not store in this browser (' + e.message + '). Data is loaded for this session only.']); }
   }
   function wireDrop(dropId, inputId, handler) {
@@ -1009,6 +1009,8 @@
   window.APP = {
     get M() { return M; }, render: () => M && render(), derive, Details, showTab, esc, fmt, fmtM, fmtP, baseOpts,
     markPicked: () => { PICKED_AT = Date.now(); }, onTab: null,
+    // for the publish bar: the locally imported workbook (null when the page shows the published file)
+    localData: () => { let s = null; try { s = JSON.parse(localStorage.getItem(LS_KEY) || 'null'); } catch (e) { } return s && s.model ? { key: JSON.stringify(s.model), bytes: () => new Uint8Array(XLSX.write(modelToWb(s.model), { type: 'array', bookType: 'xlsx' })) } : null; },
     whenReady: fn => { if (M) fn(); else ready.push(fn); }
   };
 

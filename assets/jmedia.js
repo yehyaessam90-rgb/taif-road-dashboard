@@ -78,7 +78,7 @@
     if (SX && SX.renderJunctions) SX.renderJunctions(); else decorate();
     renderImport();
   }
-  async function saveOps() { await kvSet('state', { ops: OPS }); IDX = apply(PUB, OPS); if (!IDX.weeks.some(w => w.date === SEL)) SEL = IDX.weeks[0] ? IDX.weeks[0].date : null; }
+  async function saveOps() { await kvSet('state', { ops: OPS }); if (window.PUBLISHER) PUBLISHER.changed(); IDX = apply(PUB, OPS); if (!IDX.weeks.some(w => w.date === SEL)) SEL = IDX.weeks[0] ? IDX.weeks[0].date : null; }
 
   // file contents: unpublished ones come from this browser
   const URLS = {};
@@ -469,9 +469,10 @@
   // ---------------- publish ----------------
   const repo = () => { const h = location.hostname.match(/^([^.]+)\.github\.io$/i), seg = location.pathname.split('/').filter(Boolean)[0]; return h && seg ? { o: h[1], r: seg } : { o: 'yehyaessam90-rgb', r: 'taif-road-dashboard' }; };
   const b64 = buf => { const u = new Uint8Array(buf); let s = ''; for (let i = 0; i < u.length; i += 0x8000) s += String.fromCharCode.apply(null, u.subarray(i, i + 0x8000)); return btoa(s); };
-  async function publish() {
-    const msg = t => { $('#jmPubMsg').innerHTML = t; };
-    const tok = $('#jmTok').value.trim();
+  async function publish(tokArg, msgArg) {
+    const ext = typeof tokArg === 'string';
+    const msg = msgArg || (t => { const el = $('#jmPubMsg'); if (el) el.innerHTML = t; });
+    const tok = ext ? tokArg : $('#jmTok').value.trim();
     if (!tok) return msg('✗ Paste a GitHub token first (see the note below the button), or use <b>Download for manual upload</b>.');
     try { localStorage.setItem('trd_gh_token', tok); } catch (e) { }
     const { o, r } = repo();
@@ -481,7 +482,7 @@
       if (!res.ok) { let m = ''; try { m = (await res.json()).message; } catch (e) { } throw new Error(`GitHub ${res.status}${m ? ': ' + m : ''}`); }
       return res.json();
     };
-    $('#jmPub').disabled = true;
+    if ($('#jmPub')) $('#jmPub').disabled = true;
     try {
       msg('Connecting to GitHub…');
       const ref = await gh('/git/ref/heads/main'), head = await gh('/git/commits/' + ref.object.sha);
@@ -516,8 +517,10 @@
       PUB = merged; OPS = []; await saveOps();
       msg(`✓ Published (${files.length} file${files.length === 1 ? '' : 's'}). GitHub Pages updates for everyone in about a minute.`);
       renderImport(); SX.renderJunctions();
-      $('#jmPubMsg').innerHTML = `✓ Published (${files.length} file${files.length === 1 ? '' : 's'}). GitHub Pages updates for everyone in about a minute.`;
-    } catch (e) { msg('✗ ' + esc(e.message) + (/401|403/.test(e.message) ? ' — check the token (repository access to taif-road-dashboard, Contents: Read and write).' : '')); }
+      if ($('#jmPubMsg')) $('#jmPubMsg').innerHTML = `✓ Published (${files.length} file${files.length === 1 ? '' : 's'}). GitHub Pages updates for everyone in about a minute.`;
+      if (window.PUBLISHER) PUBLISHER.refresh();
+      return files.length;
+    } catch (e) { if (ext) throw e; msg('✗ ' + esc(e.message) + (/401|403/.test(e.message) ? ' — check the token (repository access to taif-road-dashboard, Contents: Read and write).' : '')); }
     finally { const b = $('#jmPub'); if (b) b.disabled = !OPS.length; }
   }
   async function zip() {
@@ -530,6 +533,6 @@
     $('#jmPubMsg').innerHTML = '<b>GitHub does not unzip files</b> — uploading the .zip itself changes nothing. Unzip it first, open the repository on GitHub → <b>Add file › Upload files</b> → drag the <code>data</code> folder from the zip → <b>Commit</b>. Then click <b>Discard unpublished</b> here once the site shows the new files.';
   }
 
-  window.JMEDIA = { has, decorate, parseDeck, scrubDeck, load, get index() { return IDX; } };
+  window.JMEDIA = { has, decorate, parseDeck, scrubDeck, load, pending: () => OPS.length, publish: (tok, msg) => publish(tok, msg), get index() { return IDX; } };
   A.whenReady(load);
 })();

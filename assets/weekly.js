@@ -409,6 +409,7 @@
 
   // hook for app.js: physical progress points from the reports
   window.WEEKLY = {
+    localData: async () => { const l = await idbGet('weeks'); if (!l || !l.length) return null; const d = forPublish(); return { key: JSON.stringify(d.weeks), bytes: () => new TextEncoder().encode(JSON.stringify(d)) }; },
     latest: () => {
       const w = WEEKS[WEEKS.length - 1];
       if (!w) return null;
@@ -696,7 +697,7 @@
       const w = await parseDocx(file);
       upsert(w);
       SEL = key(w);
-      await idbSet('weeks', WEEKS);
+      await idbSet('weeks', WEEKS); if (window.PUBLISHER) PUBLISHER.changed();
       const found = [['progress', w.progress], ['HSE', w.hse], ['manpower', w.manpower], ['equipment', w.equipment], ['quantities', w.quantities], ['works completed', w.completed], ['planned next week', w.planned], ['quality', w.wir], ['engineering', w.deliverables], ['risks', w.risks], ['photos', w.photos && w.photos.length ? w.photos : null]]
         .map(([n, v]) => (v && (!Array.isArray(v) || v.length) ? '✓ ' : '• missing: ') + n).join(' · ');
       setStatus(`✓ Imported report <b>${esc(weekLabel(w))}</b> — ${(w.tables || []).length} tables, ${(w.photos || []).length} photos<br>${found}<br>To publish for everyone: click <b>Download weekly.json</b> and upload it to the repo folder <code>data/</code>.`);
@@ -719,7 +720,7 @@
     $('#wkDelete').onclick = async () => {
       const w = cur(); if (!w) return;
       if (!confirm(`Remove report ${weekLabel(w)} from this browser?`)) return;
-      WEEKS = WEEKS.filter(x => x !== w); SEL = null; await idbSet('weeks', WEEKS); A.render(); render();
+      WEEKS = WEEKS.filter(x => x !== w); SEL = null; await idbSet('weeks', WEEKS); if (window.PUBLISHER) PUBLISHER.changed(); A.render(); render();
       setStatus('Report removed locally. Download weekly.json and publish it to remove it for everyone.');
     };
     $('#wkSel').onchange = e => { SEL = e.target.value; render(); };
