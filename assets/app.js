@@ -723,8 +723,13 @@
       const prev = D.inv[idx - 1];
       const days = Math.round((toDate(r.to) - toDate(r.from)) / 864e5) + 1;
       const isLast = idx === D.inv.length - 1;
-      const secs = isLast ? M.sections.filter(s => s.curr) : [];
-      const items = isLast ? M.items.filter(i => i.qqty > 0).sort((a, b) => b.qamt - a.qamt) : [];
+      // the IPA workbook holds every IPC's amount per section and quantity per item; otherwise only the latest IPC is known
+      const hi = M.invoices.findIndex(x => String(x.ipc) === String(r.ipc));
+      const upto = a => a.slice(0, hi + 1).reduce((x, y) => x + y, 0);
+      const secs = M.sections.some(s => s.hist) ? M.sections.filter(s => s.hist && s.hist[hi]).map(s => Object.assign({}, s, { curr: s.hist[hi], cum: upto(s.hist) }))
+        : isLast ? M.sections.filter(s => s.curr) : [];
+      const items = (M.items.some(i => i.h) ? M.items.filter(i => i.h && i.h[hi]).map(i => { const q = i.h[hi], t = upto(i.h); return Object.assign({}, i, { qqty: q, qamt: q * i.rate, tqty: t, tamt: t * i.rate }); })
+        : isLast ? M.items.filter(i => i.qqty > 0) : []).sort((a, b) => b.qamt - a.qamt);
       const chg = prev ? (r.work / prev.work - 1) * 100 : null;
       return {
         title: `${ipcName(r.ipc)} — Interim Payment Certificate`,
@@ -737,13 +742,13 @@
           ['Gross incl. VAT', sar(r.gross)],
           ['Retention', sar(r.retention)],
           ['Net certified (incl. VAT)', `<b>${sar(r.netV)}</b>`],
-          ['Paid', r.paid ? sar(r.paid) : '—', r.paidDate ? fmtDate(r.paidDate) : 'Not recorded'],
+          ['Paid', r.paid ? sar(r.paid) : '—', r.paidDate ? fmtDate(r.paidDate) + (r.days ? ` · ${r.days} days after Etimad` : '') : r.etimad ? 'Uploaded to Etimad ' + fmtDate(r.etimad) : 'Not recorded'],
           ['Cumulative work done', sar(r.cumWork), fmtP(r.cumWork / D.cv * 100) + ' of contract'],
           ['Share of total certified', fmtP(r.work / D.cumWork * 100, 1)],
           ['Advance balance after IPC', sar(r.advBal), 'incl. VAT'],
           ['Average per day', sar(r.work / days)]
         ]) + (r.remarks ? note(esc(r.remarks)) : '') +
-          (isLast ? sec(`Sections progressed in this IPC (${secs.length})`, table([['Section'], ['Description'], ['This period', 1], ['Cumulative', 1], ['Progress', 1]],
+          (secs.length || items.length ? sec(`Sections progressed in this IPC (${secs.length})`, table([['Section'], ['Description'], ['This period', 1], ['Cumulative', 1], ['Progress', 1]],
             secs.sort((a, b) => b.curr - a.curr).map(s => `<tr class="click" data-sec="${esc(s.code)}"><td><b>${esc(s.code)}</b></td><td>${esc(s.desc)}</td><td class="n">${fmt(s.curr)}</td><td class="n">${fmt(s.cum)}</td><td class="n">${fmtP(s.cum / s.contract * 100, 1)}</td></tr>`))) +
             sec(`BOQ items progressed in this IPC (${items.length})`, table([['Bill'], ...itemHead], items.map(i => itemRow(i).replace('<td><b>', `<td>${esc(i.bill)}</td><td><b>`))))
             : note('Section and item breakdown is available for the latest IPC (the data file holds previous / current / to-date values).')) +
@@ -999,163 +1004,159 @@
   });
   $('#exportBtn').onclick = () => XLSX.writeFile(modelToWb(M), 'project-data.xlsx');
 
-  // ---------- add / edit an invoice (IPC) ----------
-  const IF = { sel: 'new', qty: null, manual: {} };
-  const billKey = code => String(code).replace(/^section\s*/i, '').replace(/^0+(?=\d)/, '').toUpperCase();
-  const itemKey = v => String(v ?? '').replace(/\s+/g, '').replace(/\.$/, '').toUpperCase();
-  const r2 = v => Math.round(v * 100) / 100;
-  // BOQ quantities workbook: any sheet with an item-number column and a to-date (or this-period) quantity column
-  function readQty(wb) {
-    let best = null;
-    wb.SheetNames.forEach(sn => {
-      const rows = XLSX.utils.sheet_to_json(wb.Sheets[sn], { header: 1, raw: true, defval: '' });
-      for (let h = 0; h < Math.min(rows.length, 25); h++) {
-        const H = rows[h].map(x => norm(x));
-        const ci = H.findIndex(x => /^(itemno|item|itemnumber|boqitem|ref|refno)$/.test(x));
-        const ct = H.findIndex(x => /(todate|cumulative|uptodate|uptothisperiod|totaltodate)/.test(x) && /qty|quantity/.test(x));
-        const cc = H.findIndex(x => /(current|thisperiod|thismonth)/.test(x) && /qty|quantity/.test(x));
-        const cp = H.findIndex(x => /(previous)/.test(x) && /qty|quantity/.test(x));
-        if (ci < 0 || (ct < 0 && cc < 0)) continue;
-        const map = {}; let n = 0;
-        rows.slice(h + 1).forEach(r => { const k = itemKey(r[ci]); if (!k) return; const t = ct >= 0 && r[ct] !== '' ? num(r[ct]) : null, c = cc >= 0 && r[cc] !== '' ? num(r[cc]) : null, pq = cp >= 0 && r[cp] !== '' ? num(r[cp]) : null; if (t === null && c === null) return; map[k] = { t, c, p: pq }; n++; });
-        if (!best || n > best.n) best = { sheet: sn, map, n, mode: ct >= 0 ? 'to-date' : 'this period' };
-        break;
+  // ---------- invoices: the IPA "Monthly Breakdown" workbook ----------
+  /* Sheets used: Progress Statement (per-IPC amounts), Payment Followup (Etimad / payment dates), BOQ Summary (sections,
+     per-IPC amounts) and Combined BOQ (every item with contract / NCO-revised quantities and the quantity of each IPC).
+     Published as data/ipa-breakdown.xlsx; it replaces the invoices, sections and BOQ items of project-data.xlsx. */
+  const IPA_PATH = 'data/ipa-breakdown.xlsx';
+  const ipcNo = v => { const m = /IPC[\s\-_]*0*(\d+)/i.exec(String(v ?? '')); return m ? m[1] : null; };
+  function ipaToModel(wb) {
+    const sh = n => { const k = wb.SheetNames.find(x => norm(x) === norm(n)); return k ? XLSX.utils.sheet_to_json(wb.Sheets[k], { header: 1, raw: true, defval: '' }) : null; };
+    const PS = sh('Progress Statement'), BS = sh('BOQ Summary'), CB = sh('Combined BOQ'), PF = sh('Payment Followup');
+    if (!PS || !BS) throw new Error('This is not the IPA Monthly Breakdown workbook (sheets "Progress Statement" and "BOQ Summary" are needed).');
+    const log = [];
+    // Progress Statement: one column per IPC
+    const hr = PS.findIndex(r => r.some(c => ipcNo(c)) && r.some(c => norm(c) === 'description'));
+    if (hr < 0) throw new Error('Progress Statement: the IPC-01, IPC-02 … header row was not found.');
+    const cols = []; PS[hr].forEach((c, j) => { const n = ipcNo(c); if (n && !cols.some(x => x[1] === n)) cols.push([j, n]); });
+    const find = re => PS.find(r => r.some(c => re.test(norm(c))));
+    const R = { work: find(/^thismonthworksperf/), rec: find(/^thismonthadvancerecoverywithoutvat/), vat: find(/^vat\d*%?$/), total: find(/^totalinvoiceamount/), ret: find(/^thismonthretention/),
+      due: find(/^thismonthpaymentdue/), adv: find(/^totaladvancepaid/), ocv: find(/^originalcontractvalue/), co: find(/^changeorders/), coN: find(/^approvedcocount/) };
+    if (!R.work) throw new Error('Progress Statement: the "This Month Works Performed" row was not found.');
+    const g = (r, j) => r ? num(r[j]) : 0;
+    // Payment Followup: status, Etimad and payment dates per IPC
+    const pay = {}; let advance = null;
+    if (PF) {
+      const ph = PF.findIndex(r => r.some(c => norm(c) === 'ipc') && r.some(c => /statusofpayment/.test(norm(c))));
+      if (ph >= 0) {
+        const H = PF[ph].map(norm), ci = k => H.findIndex(h => k.test(h));
+        const C = { ipc: ci(/^ipc$/), st: ci(/statusofpayment/), net: ci(/^netamount/), et: ci(/etimad/), pd: ci(/dateofpayment/), du: ci(/^duration/), rm: ci(/^remarks/) };
+        PF.slice(ph + 1).forEach(r => {
+          const lbl = String(r[C.ipc] || ''), n = ipcNo(lbl);
+          const o = { status: String(r[C.st] || '').trim(), net: num(r[C.net]), etimad: iso(toDate(r[C.et])), paidDate: iso(toDate(r[C.pd])), days: r[C.du] === '' ? null : num(r[C.du]), remarks: String(r[C.rm] || '').trim() };
+          if (n) pay[n] = o; else if (/advance/i.test(lbl)) advance = o;
+        });
       }
+    }
+    const old = {}; (M && M.invoices || []).forEach(r => { old[String(r.ipc)] = r; });
+    const invoices = [];
+    cols.forEach(([j, n], k) => {
+      const work = g(R.work, j);
+      if (!work && !g(R.total, j)) return;
+      const p = pay[n] || {}, prev = invoices[invoices.length - 1], o = old[n] || {};
+      const month = toDate(PS[hr - 1] && PS[hr - 1][j]);
+      // keep the certified period when known; a new IPC runs one month from the previous one
+      let from = o.from, to = o.to;
+      if (!from && prev) { const d = toDate(prev.to); from = iso(new Date(d.getTime() + 864e5)); to = iso(new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, d.getUTCDate()))); }
+      if (!from) { from = M && M.project.start || ''; to = iso(month); }
+      const paid = /paid/i.test(p.status || '') && !/un|not/i.test(p.status || '');
+      invoices.push({ ipc: n, from, to, month: iso(month), work, recovery: Math.abs(g(R.rec, j)), vat: R.vat ? g(R.vat, j) : null, retention: g(R.ret, j), net: R.due ? g(R.due, j) : g(R.total, j),
+        status: paid ? 'Paid' : p.status ? p.status + (p.remarks ? ' — ' + p.remarks : '') : (o.status || 'Submitted'), paid: paid ? (p.net || g(R.due, j)) : 0, paidDate: paid ? p.paidDate : '',
+        etimad: p.etimad || '', days: p.days ?? null, remarks: o.remarks || '', doc: o.doc || '' });
     });
-    return best;
-  }
-  // this period per item and per section from the quantities file
-  function qtyPlan() {
-    if (!IF.qty) return null;
-    const bySec = {}, items = [];
-    let matched = 0, amt = 0;
-    M.items.forEach(i => {
-      const q = IF.qty.map[itemKey(i.item)];
-      if (!q) return;
-      matched++;
-      const tq = q.t !== null ? q.t : i.tqty + (q.c || 0);
-      const cur = tq - i.tqty;
-      if (Math.abs(cur) < 1e-9) return;
-      const a = cur * i.rate;
-      items.push([i, tq, cur, a]); amt += a;
-      const k = billKey(i.bill); bySec[k] = (bySec[k] || 0) + a;
+    log.push(`✓ Progress Statement: ${invoices.length} IPCs (last IPC-${String(invoices[invoices.length - 1]?.ipc || '').padStart(2, '0')})`);
+    // BOQ Summary: sections with the amount of every IPC
+    const bh = BS.findIndex(r => r.some(c => norm(c) === 'section') && r.some(c => /^contractamount/.test(norm(c))));
+    const BH = BS[bh].map(norm), bc = re => BH.findIndex(h => re.test(h));
+    const B = { code: bc(/^section$/), desc: bc(/^description/), contract: bc(/^contractamount/), curr: bc(/^currentamount/), prev: bc(/^previousamount/), cum: bc(/^(uptodate|cumulative)amount/) };
+    const bIpc = []; BS[bh].forEach((c, j) => { const n = ipcNo(c); if (n) bIpc.push([j, n]); });
+    const sections = BS.slice(bh + 1).filter(r => /^section/i.test(String(r[B.code] || '').trim()) && r[B.contract] !== '' && r[B.contract] !== null).map(r => ({
+      code: String(r[B.code]).trim(), desc: String(r[B.desc] || '').trim(), contract: num(r[B.contract]), prev: num(r[B.prev]), curr: num(r[B.curr]), cum: num(r[B.cum]), plannedPct: null,
+      hist: invoices.map(iv => { const c = bIpc.find(x => x[1] === iv.ipc); return c ? num(r[c[0]]) : 0; })
+    }));
+    log.push(`✓ BOQ Summary: ${sections.length} sections`);
+    // Combined BOQ: every priced item
+    let items = null;
+    if (CB) {
+      const h1 = CB.findIndex(r => r.some(c => /^itemno/.test(norm(c))));
+      const top = CB[h1].map(norm), sub = (CB[h1 + 1] || []).map(norm);
+      const at = (arr, re, from = 0) => arr.findIndex((h, i) => i >= from && re.test(h));
+      const cCode = at(sub, /^uniquecode/), cItem = at(top, /^itemno/), cDesc = at(top, /^descriptionofitem/);
+      const cCon = at(top, /^contractbillofquantities/), cRev = at(top, /^revisedbillofquantities/), cQty = at(top, /^quantity$/), cAmt = at(top, /^amount/);
+      const iq = []; sub.forEach((h, j) => { const n = ipcNo(CB[h1 + 1][j]); if (n && /qty/.test(h)) iq.push([j, n]); });
+      items = [];
+      CB.slice(h1 + 2).forEach(r => {
+        const code = String(r[cCode] || '').trim(), q = r[cCon + 1], rq = cRev >= 0 ? r[cRev + 1] : '';
+        if (!code || (typeof q !== 'number' && typeof rq !== 'number')) return;
+        const rate = num(r[cCon + 2]) || num(r[cRev + 2]);
+        const bill = (/^B-([^/]+)\//.exec(code) || [])[1] || '';
+        const pq = num(r[cQty]), cq = num(r[cQty + 1]), tq = r[cQty + 2] === '' ? pq + cq : num(r[cQty + 2]);
+        items.push({ code, bill, item: String(r[cItem]).trim(), desc: String(r[cDesc] || '').replace(/^"+/, '').trim().slice(0, 400), unit: r[cCon] || '',
+          cqty: num(q), rate, camt: num(r[cCon + 3]) || num(q) * rate, rqty: cRev >= 0 && typeof rq === 'number' ? rq : null, ramt: cRev >= 0 && typeof rq === 'number' ? num(r[cRev + 3]) : null,
+          pqty: pq, qqty: cq, tqty: tq, qamt: num(r[cAmt + 1]) || cq * rate, tamt: num(r[cAmt + 2]) || tq * rate,
+          h: invoices.map(iv => { const c = iq.find(x => x[1] === iv.ipc); return c ? num(r[c[0]]) : 0; }) });
+      });
+      log.push(`✓ Combined BOQ: ${items.length} items (${new Set(items.map(i => i.bill)).size} bills)`);
+    }
+    // checks: every IPC = sum of its sections = sum of its items
+    const checks = invoices.map((iv, k) => {
+      const s = sections.reduce((a, x) => a + (x.hist[k] || 0), 0), it = items ? items.reduce((a, x) => a + (x.h[k] || 0) * x.rate, 0) : null;
+      return { ipc: iv.ipc, work: iv.work, sections: s, items: it, ok: Math.abs(s - iv.work) < 1 && (it === null || Math.abs(it - iv.work) < Math.max(5, iv.work * 1e-6)) };
     });
-    const known = new Set(M.items.map(i => itemKey(i.item)));
-    const unknown = Object.keys(IF.qty.map).filter(k => !known.has(k));
-    return { bySec, items, matched, unknown, amt };
+    const project = {};
+    if (R.ocv) { const v = num(R.ocv[cols[cols.length - 1][0]]); if (v) project.cvVat = v; }
+    if (R.co) project.co = num(R.co[cols[cols.length - 1][0]]) / 1.15;
+    if (R.coN) project.coCount = num(R.coN[cols[cols.length - 1][0]]);
+    if (advance && advance.net) { project.advance = advance.net; project.advanceDate = advance.paidDate; }
+    else if (R.adv) project.advance = num(R.adv[cols[cols.length - 1][0]]);
+    return { model: { invoices, sections, items }, project, log, checks };
   }
-  function ipcFormHtml() {
-    const p = M.project, D = derive(M), inv = D.inv, last = inv[inv.length - 1];
-    const edit = IF.sel !== 'new' ? M.invoices.find(r => String(r.ipc) === IF.sel) : null;
-    const nextNo = Math.max(0, ...M.invoices.map(r => parseInt(r.ipc, 10) || 0)) + 1;
-    const dPlus = (s, n) => { const d = toDate(s); return d ? iso(new Date(d.getTime() + n * 864e5)) : ''; };
-    const nextFrom = last ? dPlus(last.to, 1) : '';
-    const nextTo = last && toDate(last.to) ? (() => { const d = toDate(last.to); return iso(new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, d.getUTCDate()))); })() : '';
-    const v = edit || { ipc: String(nextNo), from: nextFrom, to: nextTo, work: '', recovery: '', vat: '', retention: 0, net: '', status: 'Submitted', paid: '', paidDate: '', remarks: '', doc: '' };
-    const Q = edit ? null : qtyPlan();
-    const f = (id, label, val, type = 'number', wide) => `<label class="cut-f${wide ? ' ev-wide' : ''}">${label}<input id="${id}" type="${type}" ${type === 'number' ? 'step="0.01"' : ''} value="${esc(val ?? '')}"></label>`;
-    return `<div class="ev-form">
-        <label class="cut-f">Invoice<select id="ipSel"><option value="new" ${!edit ? 'selected' : ''}>➕ New IPC (No. ${nextNo})</option>${[...M.invoices].reverse().map(r => `<option value="${esc(r.ipc)}" ${edit && r.ipc === edit.ipc ? 'selected' : ''}>Edit IPC-${String(r.ipc).padStart(2, '0')} · ${esc(r.status || '')}</option>`).join('')}</select></label>
-        ${f('ipNo', 'IPC No.', v.ipc, 'text')}${f('ipFrom', 'Period from', v.from || '', 'date')}${f('ipTo', 'Period to', v.to || '', 'date')}
-        <label class="cut-f">Status<select id="ipStatus">${['Submitted', 'Under review', 'Certified', 'Paid', 'Rejected'].map(x => `<option ${x === (v.status || 'Submitted') ? 'selected' : ''}>${x}</option>`).join('')}</select></label>
-      </div>
-      <div class="ev-form">
-        ${f('ipWork', 'Work done this IPC (SAR excl. VAT)', v.work)}
-        ${f('ipRec', `Advance recovery (${p.advPct || 10}% — auto)`, v.recovery)}
-        ${f('ipVat', `VAT (${p.vat || 15}% — auto)`, v.vat ?? '')}
-        ${f('ipRet', 'Retention (incl. VAT)', v.retention || 0)}
-        ${f('ipNet', 'Net certified incl. VAT (auto)', v.net ?? '')}
-      </div>
-      <div class="ev-form">${f('ipPaid', 'Paid amount', v.paid || '')}${f('ipPaidD', 'Paid date', v.paidDate || '', 'date')}${f('ipDoc', 'Document link (Google Drive …)', v.doc || '', 'url', true)}${f('ipRem', 'Remarks', v.remarks || '', 'text', true)}</div>
-      ${edit ? '<p class="muted small">Editing changes the IPC row only (dates, amounts, status, payment, link). Section and BOQ quantities stay as they are.</p>' : `
-      <h4 class="dsec">Quantities (optional) — BOQ to-date or this-period quantities</h4>
-      <label class="drop" id="ipQDrop"><input type="file" id="ipQFile" accept=".xlsx,.xls,.csv"><span class="drop-ic">▦</span><span><b>Drop the IPC quantities workbook</b> (Excel) or click to browse</span><span class="muted small">Needs an <b>Item No</b> column and a <b>To-Date Qty</b> (or Current / This Period Qty) column — e.g. the IPA measurement sheet, or <a href="#" id="ipQTpl">this template</a></span></label>
-      ${Q ? `<div class="dnote">✓ ${esc(IF.qty.name)} · sheet “${esc(IF.qty.sheet)}” (${IF.qty.mode} quantities): <b>${Q.matched}</b> BOQ items matched, ${Q.items.length} changed this period worth <b>SAR ${fmt(Q.amt)}</b>${Q.unknown.length ? ` · <span class="neg">${Q.unknown.length} item no. not in the BOQ: ${esc(Q.unknown.slice(0, 8).join(', '))}${Q.unknown.length > 8 ? '…' : ''}</span>` : ''} <button class="btn ghost" id="ipQClear">remove</button></div>` : ''}
-      <h4 class="dsec">This IPC by section (SAR excl. VAT) — from the BOQ summary page of the IPC${Q ? ' (filled from the quantities)' : ''}</h4>
-      <div class="table-wrap"><table class="tbl"><thead><tr><th>Section</th><th>Description</th><th class="n">Contract</th><th class="n">Previous (to IPC-${last ? String(last.ipc).padStart(2, '0') : '—'})</th><th class="n">This IPC</th><th class="n">Cumulative</th></tr></thead><tbody>
-        ${M.sections.map((x, i) => { const auto = Q ? r2(Q.bySec[billKey(x.code)] || 0) : ''; const val = IF.manual[i] !== undefined ? IF.manual[i] : auto; return `<tr><td><b>${esc(x.code)}</b></td><td class="small">${esc(x.desc)}</td><td class="n">${fmt(x.contract)}</td><td class="n">${fmt(x.cum)}</td><td class="n"><input type="number" step="0.01" class="ip-sec" data-i="${i}" value="${val}" style="width:130px"></td><td class="n" data-cum="${i}">${fmt(x.cum + (num(val) || 0))}</td></tr>`; }).join('')}
-      </tbody><tfoot><tr><td colspan="4"><b>Total this IPC</b></td><td class="n"><b id="ipSecTot">—</b></td><td id="ipSecChk" class="small"></td></tr></tfoot></table></div>`}
-      <div class="row-btns"><button class="btn primary" id="ipSave">${edit ? 'Save changes' : 'Add IPC-' + String(v.ipc).padStart(2, '0')}</button><span id="ipMsg" class="muted small"></span></div>`;
+  // overlay the IPA workbook on the model (doc links and remarks typed on the site are kept)
+  function applyIpa(model, wb, label) {
+    const r = ipaToModel(wb);
+    const docs = {}; (model.invoices || []).forEach(x => { if (x.doc || x.remarks) docs[String(x.ipc)] = x; });
+    r.model.invoices.forEach(x => { const d = docs[x.ipc]; if (d) { x.doc = x.doc || d.doc || ''; x.remarks = x.remarks || d.remarks || ''; } });
+    model.invoices = r.model.invoices; model.sections = r.model.sections; if (r.model.items) model.items = r.model.items;
+    Object.assign(model.project, r.project);
+    const last = r.model.invoices[r.model.invoices.length - 1];
+    if (last && (!model.project.dataDate || model.project.dataDate < last.to)) model.project.dataDate = last.to;
+    IPA_INFO = { label, checks: r.checks, log: r.log };
+    return r;
+  }
+  let IPA_INFO = null;
+  // the workbook dropped in this browser (until published)
+  const ipaIdb = mode => new Promise(res => { const q = indexedDB.open('trd_fin', 1); q.onupgradeneeded = () => q.result.createObjectStore('kv'); q.onsuccess = () => { const t = q.result.transaction('kv', mode); res(t.objectStore('kv')); }; q.onerror = () => res(null); });
+  const ipaGet = async () => { try { const st = await ipaIdb('readonly'); return st ? await new Promise(r => { const g = st.get('ipa'); g.onsuccess = () => r(g.result || null); g.onerror = () => r(null); }) : null; } catch (e) { return null; } };
+  const ipaSet = async v => { try { const st = await ipaIdb('readwrite'); if (st) await new Promise(r => { const q = v ? st.put(v, 'ipa') : st.delete('ipa'); q.onsuccess = r; q.onerror = r; }); } catch (e) { } if (window.PUBLISHER) PUBLISHER.changed(); };
+
+  function ipcCardHtml() {
+    const I = IPA_INFO, D = derive(M);
+    const chk = I ? I.checks : [];
+    return `<label class="drop" id="ipaDrop"><input type="file" id="ipaFile" accept=".xlsx,.xlsm,.xls"><span class="drop-ic">₪</span><span><b>Drop the IPA Monthly Breakdown workbook</b> (.xlsx) or click to browse</span><span class="muted small">Sheets read: Progress Statement · Payment Followup · BOQ Summary · Combined BOQ — upload the same workbook after every new IPC</span></label>
+      <div id="ipaMsg" class="muted small xer-status">${I ? `Source: <b>${esc(I.label)}</b> · ${esc(I.log.join(' · '))}` : 'No IPA workbook loaded — the invoices come from project-data.xlsx.'}</div>
+      ${chk.length ? `<div class="table-wrap"><table class="tbl"><thead><tr><th>IPC</th><th>Period</th><th class="n">Work done</th><th class="n">Net incl. VAT</th><th>Status</th><th>Etimad</th><th>Paid</th><th class="n">Sections = work</th><th class="n">Items = work</th><th>Document link</th></tr></thead><tbody>${D.inv.map(r => { const c = chk.find(x => x.ipc === String(r.ipc)) || {}; return `<tr><td><b>IPC-${String(r.ipc).padStart(2, '0')}</b></td><td class="small">${fmtDate(r.from)} – ${fmtDate(r.to)}</td><td class="n">${fmt(r.work)}</td><td class="n">${fmt(r.netV)}</td><td class="small">${esc(r.status || '')}</td><td class="small">${r.etimad ? fmtDate(r.etimad) : '—'}</td><td class="small">${r.paidDate ? fmtDate(r.paidDate) + (r.days ? ` (${r.days} d)` : '') : '—'}</td><td class="n">${c.sections === undefined ? '—' : Math.abs(c.sections - r.work) < 1 ? '<span class="pos">✓</span>' : `<span class="neg">${fmt(c.sections - r.work)}</span>`}</td><td class="n">${c.items === null || c.items === undefined ? '—' : Math.abs(c.items - r.work) < Math.max(5, r.work * 1e-6) ? '<span class="pos">✓</span>' : `<span class="neg">${fmt(c.items - r.work)}</span>`}</td><td><input class="ipa-doc" data-ipc="${esc(r.ipc)}" type="url" placeholder="Google Drive link" value="${esc(r.doc || '')}" style="width:220px"></td></tr>`; }).join('')}</tbody></table></div>
+        <div class="row-btns"><button class="btn" id="ipaDocSave">Save document links</button><button class="btn danger" id="ipaClear">↺ Use the published workbook</button><span id="ipaDocMsg" class="muted small"></span></div>` : ''}`;
   }
   function renderIpcForm() {
     const host = $('#ipcImport');
     if (!host || !M) return;
-    host.innerHTML = ipcFormHtml();
-    const g = id => $('#' + id), p = M.project;
-    const recalc = src => {
-      const w = num(g('ipWork').value);
-      if (src !== 'ipRec' && !IF.recManual) g('ipRec').value = w ? r2(w * (p.advPct || 10) / 100) : '';
-      const rec = num(g('ipRec').value);
-      if (src !== 'ipVat' && !IF.vatManual) g('ipVat').value = w ? r2((w - rec) * (p.vat || 15) / 100) : '';
-      if (src !== 'ipNet') g('ipNet').value = w ? r2(w - rec + num(g('ipVat').value) - num(g('ipRet').value)) : '';
-      secTot();
+    host.innerHTML = ipcCardHtml();
+    wireDrop('ipaDrop', 'ipaFile', async file => {
+      const msg = $('#ipaMsg');
+      try {
+        const buf = await file.arrayBuffer(), wb = XLSX.read(buf, { cellDates: true });
+        const keep = JSON.parse(JSON.stringify(M));
+        let r;
+        try { r = applyIpa(M, wb, file.name); } catch (e) { M = keep; throw e; }
+        const bad = r.checks.filter(c => !c.ok);
+        // the site is public: drop the author / last-editor names kept inside the file
+        let bytes = new Uint8Array(buf);
+        try { if (window.JMEDIA && JMEDIA.scrubDeck) bytes = new Uint8Array(JMEDIA.scrubDeck(buf)); } catch (e) { }
+        await ipaSet({ name: file.name, bytes, at: new Date().toISOString() });
+        SOURCE = 'Imported: ' + file.name;
+        render(); renderIpcForm();
+        $('#ipaMsg').innerHTML = `✓ <b>${esc(file.name)}</b> loaded — ${esc(r.log.join(' · '))}.${bad.length ? ` <span class="neg">Check IPC ${bad.map(c => c.ipc).join(', ')}: sections or items do not add up to the work done.</span>` : ' Every IPC = its sections = its BOQ items ✓'}${window.PUBLISHER ? ' Publishing from the bar at the top.' : ''}`;
+        log(['Imported IPA workbook "' + file.name + '"', ...r.log]);
+      } catch (e) { msg.innerHTML = '<span class="neg">✗ ' + esc(e.message) + '</span>'; }
+    });
+    if ($('#ipaDocSave')) $('#ipaDocSave').onclick = () => {
+      host.querySelectorAll('.ipa-doc').forEach(x => { const r = M.invoices.find(i => String(i.ipc) === x.dataset.ipc); if (r) r.doc = x.value.trim(); });
+      save({ file: 'document links', at: new Date().toISOString() }); render();
+      $('#ipaDocMsg').textContent = '✓ Links saved — the IPC details on the Financial page show “Open the IPC document”.';
     };
-    const secTot = () => {
-      const ins = [...host.querySelectorAll('.ip-sec')];
-      if (!ins.length) return;
-      let t = 0;
-      ins.forEach(x => { const i = +x.dataset.i, val = num(x.value); t += val; host.querySelector(`[data-cum="${i}"]`).textContent = fmt(M.sections[i].cum + val); });
-      g('ipSecTot').textContent = fmt(t);
-      const w = num(g('ipWork').value), d = t - w;
-      g('ipSecChk').innerHTML = !t ? '<span class="muted">enter the section amounts (optional)</span>' : Math.abs(d) < 1 ? '<span class="pos">✓ equals the work done</span>' : `<span class="neg">differs from the work done by ${fmt(d)}</span>`;
-    };
-    g('ipSel').onchange = e => { IF.sel = e.target.value; IF.qty = null; IF.manual = {}; IF.recManual = IF.vatManual = !!M.invoices.find(r => String(r.ipc) === IF.sel); renderIpcForm(); };
-    g('ipWork').oninput = () => recalc('ipWork');
-    g('ipRec').oninput = () => { IF.recManual = true; recalc('ipRec'); };
-    g('ipVat').oninput = () => { IF.vatManual = true; recalc('ipVat'); };
-    g('ipRet').oninput = () => recalc('ipRet');
-    host.querySelectorAll('.ip-sec').forEach(x => x.oninput = () => { IF.manual[+x.dataset.i] = x.value; secTot(); });
-    if (g('ipQDrop')) {
-      wireDrop('ipQDrop', 'ipQFile', async file => {
-        try {
-          const q = readQty(XLSX.read(await file.arrayBuffer()));
-          if (!q) { g('ipMsg').innerHTML = '<span class="neg">✗ No sheet with an Item No column and a To-Date / Current Qty column was found.</span>'; return; }
-          IF.qty = Object.assign(q, { name: file.name }); IF.manual = {};
-          const keep = { work: g('ipWork').value, from: g('ipFrom').value, to: g('ipTo').value, doc: g('ipDoc').value, rem: g('ipRem').value, no: g('ipNo').value, st: g('ipStatus').value };
-          renderIpcForm();
-          g('ipFrom').value = keep.from; g('ipTo').value = keep.to; g('ipDoc').value = keep.doc; g('ipRem').value = keep.rem; g('ipNo').value = keep.no; g('ipStatus').value = keep.st;
-          g('ipWork').value = keep.work || r2(qtyPlan().amt); $('#ipWork').dispatchEvent(new Event('input'));
-        } catch (e) { g('ipMsg').innerHTML = '<span class="neg">✗ ' + esc(e.message) + '</span>'; }
-      });
-      g('ipQTpl').onclick = e => { e.preventDefault(); const ws = XLSX.utils.aoa_to_sheet([['Item No', 'Description', 'To-Date Qty'], ...M.items.map(i => [i.item, i.desc, i.tqty])]); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Quantities'); XLSX.writeFile(wb, 'IPC_quantities_template.xlsx'); };
-      if (g('ipQClear')) g('ipQClear').onclick = () => { IF.qty = null; IF.manual = {}; renderIpcForm(); };
-    }
-    g('ipSave').onclick = saveIpc;
-    if (!M.invoices.find(r => String(r.ipc) === IF.sel)) recalc('init');
-    secTot();
+    if ($('#ipaClear')) $('#ipaClear').onclick = async () => { await ipaSet(null); IPA_INFO = null; boot(); };
   }
-  function saveIpc() {
-    const g = id => $('#' + id), msg = t => { g('ipMsg').innerHTML = t; };
-    const no = g('ipNo').value.trim(), work = num(g('ipWork').value);
-    if (!no || !g('ipFrom').value || !g('ipTo').value) return msg('<span class="neg">✗ IPC No. and the period are required.</span>');
-    if (!work) return msg('<span class="neg">✗ Enter the work done (SAR excl. VAT).</span>');
-    const row = { ipc: no, from: g('ipFrom').value, to: g('ipTo').value, work, recovery: Math.abs(num(g('ipRec').value)), vat: g('ipVat').value === '' ? null : num(g('ipVat').value),
-      retention: num(g('ipRet').value), net: g('ipNet').value === '' ? null : num(g('ipNet').value), status: g('ipStatus').value, paid: num(g('ipPaid').value), paidDate: g('ipPaidD').value || '', remarks: g('ipRem').value.trim(), doc: g('ipDoc').value.trim() };
-    const edit = IF.sel !== 'new';
-    if (edit) {
-      const i = M.invoices.findIndex(r => String(r.ipc) === IF.sel);
-      M.invoices[i] = Object.assign({}, M.invoices[i], row);
-    } else {
-      if (M.invoices.some(r => String(r.ipc) === no)) return msg(`<span class="neg">✗ IPC ${esc(no)} already exists — choose it in the list to edit it.</span>`);
-      const lines = ['Added IPC-' + String(no).padStart(2, '0') + ': SAR ' + fmt(work)];
-      // sections: previous ← cumulative, this IPC as entered
-      const vals = [...document.querySelectorAll('.ip-sec')].map(x => num(x.value));
-      if (vals.some(v => v)) { M.sections.forEach((x, i) => { x.prev = x.cum; x.curr = vals[i] || 0; x.cum = x.prev + x.curr; }); lines.push('Sections updated (this IPC total SAR ' + fmt(vals.reduce((a, b) => a + b, 0)) + ')'); }
-      else M.sections.forEach(x => { x.prev = x.cum; x.curr = 0; });
-      // BOQ items: previous ← to-date, then the new to-date from the quantities file
-      const Q = qtyPlan(), upd = new Map(Q ? Q.items.map(([i, tq]) => [i, tq]) : []);
-      M.items.forEach(i => { i.pqty = i.tqty; const tq = upd.has(i) ? upd.get(i) : i.tqty; i.tqty = tq; i.qqty = tq - i.pqty; i.qamt = i.qqty * i.rate; i.tamt = i.tqty * i.rate; });
-      if (Q) lines.push(Q.items.length + ' BOQ items with quantities this period');
-      M.invoices.push(row);
-      M.project.dataDate = row.to;
-      IF.qty = null; IF.manual = {}; IF.sel = 'new';
-      log(lines);
-    }
-    SOURCE = 'Imported: IPC form';
-    save({ file: 'IPC-' + String(no).padStart(2, '0') + ' (form)', at: new Date().toISOString() });
-    render(); renderIpcForm();
-    $('#ipMsg').innerHTML = `✓ IPC-${String(no).padStart(2, '0')} ${edit ? 'updated' : 'added'} — the Financial page shows it now${window.PUBLISHER ? '; it is published to the public link from the bar at the top' : ''}.`;
-  }
+
   $('#resetBtn').onclick = resetData;
   function resetData() {
     try { localStorage.removeItem(LS_KEY); } catch (e) { }
@@ -1169,6 +1170,7 @@
     get M() { return M; }, render: () => M && render(), derive, Details, showTab, esc, fmt, fmtM, fmtP, baseOpts,
     markPicked: () => { PICKED_AT = Date.now(); }, onTab: null,
     // for the publish bar: the locally imported workbook (null when the page shows the published file)
+    ipaLocal: async () => { const v = await ipaGet(); return v ? { name: v.name, bytes: v.bytes } : null; },
     localData: () => { let s = null; try { s = JSON.parse(localStorage.getItem(LS_KEY) || 'null'); } catch (e) { } return s && s.model ? { key: JSON.stringify(s.model), bytes: () => new Uint8Array(XLSX.write(modelToWb(s.model), { type: 'array', bookType: 'xlsx' })) } : null; },
     whenReady: fn => { if (M) fn(); else ready.push(fn); }
   };
@@ -1191,6 +1193,14 @@
         if (s && s.model) { model = s.model; SOURCE = 'Imported: ' + (s.meta?.file || 'file'); }
       } catch (e) { }
     }
+    // invoices / sections / BOQ items from the IPA Monthly Breakdown workbook (this browser's copy first, then the published one)
+    IPA_INFO = null;
+    try {
+      const loc = skipLocal ? null : await ipaGet();
+      let buf = loc ? loc.bytes : null, label = loc ? loc.name + ' (this browser)' : '';
+      if (!buf) { const r = await fetch(IPA_PATH, { cache: 'no-store' }); if (r.ok) { buf = new Uint8Array(await r.arrayBuffer()); label = 'published ' + IPA_PATH; } }
+      if (buf) { M = model; applyIpa(model, XLSX.read(buf, { cellDates: true }), label); if (!loc) SOURCE = 'Published: IPA Monthly Breakdown'; }
+    } catch (e) { console.error('IPA workbook', e); }
     M = model;
     render();
     renderIpcForm();

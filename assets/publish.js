@@ -25,6 +25,7 @@
     if (x) out.push({ id: 'xlsx', label: 'Financial workbook (IPC / BOQ / spending)', path: 'data/project-data.xlsx', ...x });
     if (window.SCHEDX && SCHEDX.localData) out.push(...await SCHEDX.localData());
     if (window.WEEKLY && WEEKLY.localData) { const w = await WEEKLY.localData(); if (w) out.push({ id: 'weekly', label: 'Weekly reports', path: 'data/weekly.json', pubKey: x => JSON.stringify(JSON.parse(x).weeks), ...w }); }
+    if (A.ipaLocal) { const v = await A.ipaLocal(); if (v) out.push({ id: 'ipa', label: 'Invoices — IPA Monthly Breakdown (' + v.name + ')', path: 'data/ipa-breakdown.xlsx', key: b64(v.bytes), bytes: () => v.bytes, bin: true }); }
     const site = await idbRead('trd_site', 'kv', 'site');
     if (site) { const t = JSON.stringify(site); out.push({ id: 'site', label: 'Site manpower & equipment sheet', path: 'data/site-resources.json', key: t, bytes: () => enc(t), pubKey: x => JSON.stringify(JSON.parse(x)) }); }
     const ev = ls.get('trd_events');
@@ -44,7 +45,7 @@
   async function pubHash(it) {
     if (PUBH[it.path] === undefined) {
       PUBH[it.path] = null;
-      try { const r = await fetch(it.path, { cache: 'no-store' }); if (r.ok) { const t = await r.text(); PUBH[it.path] = await sha256(it.pubKey ? it.pubKey(t) : t); } } catch (e) { }
+      try { const r = await fetch(it.path, { cache: 'no-store' }); if (r.ok) { const t = it.bin ? b64(new Uint8Array(await r.arrayBuffer())) : await r.text(); PUBH[it.path] = await sha256(it.pubKey ? it.pubKey(t) : t); } } catch (e) { }
     }
     return PUBH[it.path];
   }
