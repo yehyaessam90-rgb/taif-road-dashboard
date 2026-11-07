@@ -1066,7 +1066,7 @@
     }));
     log.push(`✓ BOQ Summary: ${sections.length} sections`);
     // Combined BOQ: every priced item
-    let items = null;
+    let items = null; const heads = {};
     if (CB) {
       const h1 = CB.findIndex(r => r.some(c => /^itemno/.test(norm(c))));
       const top = CB[h1].map(norm), sub = (CB[h1 + 1] || []).map(norm);
@@ -1077,7 +1077,9 @@
       items = [];
       CB.slice(h1 + 2).forEach(r => {
         const code = String(r[cCode] || '').trim(), q = r[cCon + 1], rq = cRev >= 0 ? r[cRev + 1] : '';
-        if (!code || (typeof q !== 'number' && typeof rq !== 'number')) return;
+        // group headings (e.g. B-5A/5A.13 Waterproof Membrane) name the BOQ groups that P6 resources point to
+        if (code && typeof q !== 'number' && typeof rq !== 'number') { const d = String(r[cDesc] || '').replace(/^"+/, '').trim(); if (d) heads[code] = d.split(/[:\n]/)[0].trim().slice(0, 120); return; }
+        if (!code) return;
         const rate = num(r[cCon + 2]) || num(r[cRev + 2]);
         const bill = (/^B-([^/]+)\//.exec(code) || [])[1] || '';
         const pq = num(r[cQty]), cq = num(r[cQty + 1]), tq = r[cQty + 2] === '' ? pq + cq : num(r[cQty + 2]);
@@ -1099,14 +1101,14 @@
     if (R.coN) project.coCount = num(R.coN[cols[cols.length - 1][0]]);
     if (advance && advance.net) { project.advance = advance.net; project.advanceDate = advance.paidDate; }
     else if (R.adv) project.advance = num(R.adv[cols[cols.length - 1][0]]);
-    return { model: { invoices, sections, items }, project, log, checks };
+    return { model: { invoices, sections, items, heads }, project, log, checks };
   }
   // overlay the IPA workbook on the model (doc links and remarks typed on the site are kept)
   function applyIpa(model, wb, label) {
     const r = ipaToModel(wb);
     const docs = {}; (model.invoices || []).forEach(x => { if (x.doc || x.remarks) docs[String(x.ipc)] = x; });
     r.model.invoices.forEach(x => { const d = docs[x.ipc]; if (d) { x.doc = x.doc || d.doc || ''; x.remarks = x.remarks || d.remarks || ''; } });
-    model.invoices = r.model.invoices; model.sections = r.model.sections; if (r.model.items) model.items = r.model.items;
+    model.invoices = r.model.invoices; model.sections = r.model.sections; if (r.model.items) model.items = r.model.items; model.heads = r.model.heads;
     Object.assign(model.project, r.project);
     const last = r.model.invoices[r.model.invoices.length - 1];
     if (last && (!model.project.dataDate || model.project.dataDate < last.to)) model.project.dataDate = last.to;
