@@ -404,12 +404,16 @@
   }
   function forPublish() {
     const keepPhotos = new Set(WEEKS.slice(-PHOTO_WEEKS).map(key));
-    return { v: 1, exported: new Date().toISOString(), weeks: WEEKS.map(w => keepPhotos.has(key(w)) ? w : { ...w, photos: [], photosDropped: (w.photos || []).length }) };
+    return { v: 1, exported: new Date().toISOString(), weeks: WEEKS.map(w => keepPhotos.has(key(w)) ? w : { ...w, photos: [], photosDropped: (w.photos || []).length || w.photosDropped || 0 }) };
   }
 
   // hook for app.js: physical progress points from the reports
   window.WEEKLY = {
-    localData: async () => { const l = await idbGet('weeks'); if (!l || !l.length) return null; const d = forPublish(); return { key: JSON.stringify(d.weeks), bytes: () => new TextEncoder().encode(JSON.stringify(d)) }; },
+    // waits until the reports are loaded: publishing earlier would send an empty list
+    localData: async () => { await LOADED; const l = await idbGet('weeks'); if (!l || !l.length) return null; const d = forPublish();
+      // never replace published reports with an empty list
+      const guard = async () => { if (d.weeks.length) return true; try { const r = await fetch('data/weekly.json', { cache: 'no-store' }); return !r.ok || !((await r.json()).weeks || []).length; } catch (e) { return false; } };
+      return { key: JSON.stringify(d.weeks), bytes: () => new TextEncoder().encode(JSON.stringify(d)), guard, older: 'empty while the site has reports — nothing was removed' }; },
     latest: () => {
       const w = WEEKS[WEEKS.length - 1];
       if (!w) return null;
@@ -726,6 +730,7 @@
     $('#wkSel').onchange = e => { SEL = e.target.value; render(); };
   }
 
+  let loaded; const LOADED = new Promise(r => { loaded = r; });
   async function boot(skipLocal) {
     let pub = [];
     try { const r = await fetch('data/weekly.json', { cache: 'no-store' }); if (r.ok) pub = (await r.json()).weeks || []; } catch (e) { }
@@ -735,6 +740,7 @@
     (local || []).forEach(w => { const p = WEEKS.find(x => key(x) === key(w)); if (!p || (w.imported || '') >= (p.imported || '')) upsert(w); });
     if (WEEKS.length) setStatus(`${WEEKS.length} weekly report(s) loaded${local && local.length ? ' (incl. local imports)' : ''}. Latest: <b>${esc(weekLabel(WEEKS[WEEKS.length - 1]))}</b>`);
     A.render(); render();
+    loaded();
     if (window.XPL) window.XPL.refresh();
   }
 
