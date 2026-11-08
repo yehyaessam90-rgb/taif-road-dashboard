@@ -673,3 +673,4 @@ body.printing main { padding: 0; }
 .sop-q b { color: var(--brand); }
 @media print { body.sop-print-la main > section, body.sop-print-la .tabs, body.sop-print-la .topbar { display: none !important; }
   body.sop-print-la #tab-sop { display: block !important; } body.sop-print-la #tab-sop > div > *:not(#sopLa) { display: none !important; } body.sop-print-la #sopLa .row-btns { display: none !important; } }
+.cut-weeks { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin: 0 0 12px; } .cut-weeks .chip { cursor: pointer; }

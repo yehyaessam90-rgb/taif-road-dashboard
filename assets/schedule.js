@@ -205,6 +205,51 @@
   async function idbDel(k) { try { const d = await idb(); await new Promise(r => { const tx = d.transaction(STORE, 'readwrite'); tx.objectStore(STORE).delete(k); tx.oncomplete = r; tx.onerror = r; }); } catch (e) { } }
   const pending = { b: null, u: null, fb: '', fu: '' };
 
+  // ---------------- progress history: each weekly update's % complete and actual dates ----------------
+  // data/history-<programme>.json: { snaps: [{ date, file, a: { code: [pct, 'C'|'A'|'N', actual start day, actual finish day] } }] }
+  const HIST = {};
+  const clean = (k, v) => k === '_o' || k === '_pid' ? undefined : v;
+  function snapOf(s) {
+    const a = {};
+    s.acts.forEach(x => { const o = x._o || [x.p, x.st, x.as, x.af]; if (o[1] === 'NotStart' && !o[0]) return; a[x.c] = [o[0], o[1] === 'Complete' ? 'C' : o[1] === 'Active' ? 'A' : 'N', o[2] === null ? null : Math.floor(o[2] / DAY), o[3] === null ? null : Math.floor(o[3] / DAY)]; });
+    return { date: s.meta.update?.dataDateT ?? s.meta.update?.dataDate, file: s.meta.update?.file || '', a };
+  }
+  async function loadHist(pid) {
+    let pub = null, loc = await idbGet('history:' + pid);
+    try { const r = await fetch('data/history-' + pid + '.json', { cache: 'no-store' }); if (r.ok) pub = await r.json(); } catch (e) { }
+    const by = {};
+    [pub, loc].forEach(h => (h && h.snaps || []).forEach(x => { by[x.date] = x; }));
+    HIST[pid] = { v: 1, snaps: Object.values(by).sort((a, b) => a.date - b.date), local: !!loc };
+  }
+  // the programme's own update is always in its history (new imports add their week)
+  async function ensureSnap(pid, s) {
+    const H = HIST[pid] || (HIST[pid] = { v: 1, snaps: [] }), sn = snapOf(s);
+    if (!sn.date || H.snaps.some(x => x.date === sn.date && x.file === sn.file)) return;
+    H.snaps = H.snaps.filter(x => x.date !== sn.date).concat(sn).sort((a, b) => a.date - b.date);
+    H.local = true;
+    await idbSet('history:' + pid, { v: 1, snaps: H.snaps });
+    if (window.PUBLISHER) PUBLISHER.changed();
+  }
+  // actual progress at the cut-off: the update of that week, or — before the first update kept — estimated from the actual dates
+  function applyActual(dd, updDD) {
+    S.acts.forEach(a => { if (a._o) { a.p = a._o[0]; a.st = a._o[1]; a.as = a._o[2]; a.af = a._o[3]; delete a._o; } });
+    if (dd >= friday(updDD)) return { kind: 'update', date: updDD, file: S.meta.update?.file || '' };
+    const H = HIST[S._pid], sn = H ? H.snaps.filter(x => friday(x.date) <= dd).pop() : null;
+    const keep = a => { a._o = [a.p, a.st, a.as, a.af]; };
+    if (sn) {
+      S.acts.forEach(a => { keep(a); const r = sn.a[a.c];
+        if (r) { a.p = r[0]; a.st = r[1] === 'C' ? 'Complete' : r[1] === 'A' ? 'Active' : 'NotStart'; a.as = r[2] === null ? null : r[2] * DAY; a.af = r[3] === null ? null : r[3] * DAY; }
+        else { a.p = 0; a.st = 'NotStart'; a.as = a.af = null; } });
+      return { kind: 'update', date: sn.date, file: sn.file, past: true };
+    }
+    S.acts.forEach(a => { keep(a);
+      if (a.as === null || a.as >= dd) { a.p = 0; a.st = 'NotStart'; a.as = a.af = null; return; }
+      if (a.af !== null && a.af < dd) return;
+      const ref = a.af ?? updDD;
+      a.p = +(a.p * Math.min(1, (dd - a.as) / Math.max(DAY, ref - a.as))).toFixed(1); a.st = 'Active'; a.af = null; });
+    return { kind: 'estimate', date: dd, past: true };
+  }
+
   function index() {
     if (S.ra && S.rl) {
       S.rdict = {}; S.rl.forEach(r => { S.rdict[r[0]] = [r[1], r[2], r[3]]; });
@@ -246,7 +291,8 @@
       if (c) { const w0 = c(t0), tot = c(t1) - w0; if (tot > 0) return Math.max(0, Math.min(1, (c(t) - w0) / tot)); }
       return (t - t0) / (t1 - t0);
     };
-    X = { W, A: A_, pred, succ, dd, xerDD, friDD, custom: CUT !== null, calOK: Object.keys(clock).length > 0, pf, k, cv, wbsPath, junctions: null };
+    const actSrc = applyActual(dd, xerDD);
+    X = { W, A: A_, pred, succ, dd, xerDD, friDD, custom: CUT !== null, calOK: Object.keys(clock).length > 0, pf, k, cv, wbsPath, junctions: null, actSrc };
     curves();
   }
 
@@ -292,7 +338,7 @@
     planMonthly: () => S ? Object.keys(X.pv).sort().map(k => ({ month: k + '-01', planned: X.pv[k] * X.k })) : [],
     perfPoint: () => S && S.meta.update ? { date: ds(X.dd), planned: +X.planPct.toFixed(2), actual: +X.actPct.toFixed(2), remarks: 'From P6 update ' + (S.meta.update.file || '') } : null,
     start: () => S ? ds(X.bStart) : '', finish: () => S ? ds(X.bFinish) : '',
-    status: () => S ? { prog: prog(ACTIVE) ? prog(ACTIVE).name : '', dataDate: ds(X.dd), cut: fdt(X.dd), custom: X.custom, planPct: X.planPct, actPct: X.actPct, spi: X.pvdd ? X.ev / X.pvdd : null, fFinish: ds(X.fFinish), bFinish: ds(X.bFinish), update: S.meta.update ? S.meta.update.file : '' } : null
+    status: () => S ? { prog: prog(ACTIVE) ? prog(ACTIVE).name : '', dataDate: ds(X.dd), cut: fdt(X.dd), custom: X.custom, actFrom: X.actSrc && X.actSrc.past ? (X.actSrc.kind === 'estimate' ? 'estimated from actual dates' : 'update ' + fd(X.actSrc.date)) : '', planPct: X.planPct, actPct: X.actPct, spi: X.pvdd ? X.ev / X.pvdd : null, fFinish: ds(X.fFinish), bFinish: ds(X.bFinish), update: S.meta.update ? S.meta.update.file : '' } : null
   };
 
   // ---------------- status helpers ----------------
@@ -969,8 +1015,9 @@
     if (!S) return '';
     const rows = PROGRAMS.filter(p => PS[p.id]).map(p => {
       const x = PS[p.id].X, v = x.actPct - x.planPct;
+      const src = x.actSrc || {};
       return `<tr><td><b>${esc(p.short)}</b><div class="muted small">${esc(PS[p.id].S.meta.update?.file || '—')}</div></td><td>${fdt(x.xerDD)}</td><td>${fdt(x.friDD)}</td>
-        <td class="n"><b>${fmtP(x.planPct, 2)}</b></td><td class="n">${fmtP(x.actPct, 2)}</td><td class="n ${v < 0 ? 'neg' : 'pos'}">${(v > 0 ? '+' : '') + v.toFixed(2)}%</td><td class="n">${x.pvdd ? (x.ev / x.pvdd).toFixed(2) : '—'}</td></tr>`;
+        <td class="n"><b>${fmtP(x.planPct, 2)}</b></td><td class="n"><b>${fmtP(x.actPct, 2)}</b><div class="muted small">${src.kind === 'estimate' ? 'estimated from actual dates' : src.past ? 'update ' + fd(src.date) : 'latest update'}</div></td><td class="n ${v < 0 ? 'neg' : 'pos'}">${(v > 0 ? '+' : '') + v.toFixed(2)}%</td><td class="n">${x.pvdd ? (x.ev / x.pvdd).toFixed(2) : '—'}</td></tr>`;
     }).join('');
     const d = new Date(X.dd).toISOString();
     return `<div class="card cutbox">
@@ -986,15 +1033,18 @@
           <button class="btn" data-cut="reset" ${X.custom ? '' : 'disabled'}>Reset to XER Friday</button>
         </div>
       </div>
-      <div class="table-wrap"><table class="tbl cut-tbl"><thead><tr><th>Programme</th><th>XER data date</th><th>XER Friday</th><th class="n">Planned at cut-off</th><th class="n">Actual (XER)</th><th class="n">Variance</th><th class="n">SPI</th></tr></thead><tbody>${rows}</tbody></table></div>
+      ${(() => { const ds_ = [...new Set(Object.values(HIST).flatMap(h => h.snaps.map(x => friday(x.date))))].sort((a, b) => b - a); return ds_.length ? `<div class="cut-weeks"><span class="muted small">Weekly updates kept (actual of that week)</span>${ds_.map(t => `<button class="chip ${Math.abs(t - X.dd) < 6e4 ? 'on' : ''}" data-cut-at="${t}">${fd(t)}</button>`).join('')}</div>` : ''; })()}
+      <div class="table-wrap"><table class="tbl cut-tbl"><thead><tr><th>Programme</th><th>XER data date</th><th>XER Friday</th><th class="n">Planned at cut-off</th><th class="n">Actual at cut-off</th><th class="n">Variance</th><th class="n">SPI</th></tr></thead><tbody>${rows}</tbody></table></div>
       <p class="muted small">By default the cut-off is the Friday of the XER data date (00:00, the P6 data-date convention). <b>Planned %</b> = each activity's baseline duration elapsed at the cut-off in P6 working time (its calendar: working hours, Friday off, holidays), weighted by budget cost.
         ${X.calOK ? '' : '<b>This programme file has no calendars yet: re-import the XER files to measure working time; calendar days are used meanwhile.</b>'}
-        <b>Actual %</b> is the progress recorded in the XER update; it only changes with a new update.</p>
+        <b>Actual %</b> = the progress of the weekly update of that week (every imported update is kept in the progress history); a cut-off between two updates uses the earlier one, a date before the first update kept is estimated from the actual dates, and a date after the latest update shows the latest update.</p>
     </div>`;
   }
   function renderCutBox() { const h = $('#cutBox'); if (h) h.innerHTML = cutHtml(); }
   const cutDetail = () => ({ title: 'Cut-off (data date)', body: cutHtml() });
   document.addEventListener('click', e => {
+    const w = e.target.closest('[data-cut-at]');
+    if (w && X) { const t = +w.dataset.cutAt; return setCut(Math.abs(t - X.friDD) < 6e4 ? null : t); }
     const b = e.target.closest('[data-cut]');
     if (!b || b.disabled || !X) return;
     const k = b.dataset.cut;
@@ -1270,9 +1320,12 @@
       if (!(pe.b && pe.u) && old) msg.push(`• Drop the ${pe.b ? 'update' : 'baseline'} of this programme too — both files are needed to rebuild it.`);
       if (pe.b && pe.u || !old) {
         S = combine(pe.b, pe.u, { b: pe.fb, u: pe.fu });
+        await idbSet('schedule:' + pid, S); if (window.PUBLISHER) PUBLISHER.changed();
+        S._pid = pid;
+        if (!HIST[pid]) await loadHist(pid);
+        await ensureSnap(pid, S);
         index();
         PS[pid] = { S, X, src: 'local import' };
-        await idbSet('schedule:' + pid, S); if (window.PUBLISHER) PUBLISHER.changed();
         activate(pid);
         msg.push(`✓ ${esc(P.name)} ready: ${S.acts.length.toLocaleString()} activities. To publish: <b>Download</b> → upload <code>${P.out}</code> to <code>data/</code>.`);
         renderAll();
@@ -1293,7 +1346,7 @@
       const pid = $('#xerProg').value, P = prog(pid);
       if (!PS[pid]) return setStatus('Nothing to export for ' + esc(P.name) + ' yet.');
       const { res, rdict, ...pub } = PS[pid].S;   // res / rdict are rebuilt from ra / rl when loaded
-      const blob = new Blob([JSON.stringify(pub)], { type: 'application/json' });
+      const blob = new Blob([JSON.stringify(pub, clean)], { type: 'application/json' });
       const l = document.createElement('a'); l.href = URL.createObjectURL(blob); l.download = P.out; l.click();
     };
     $('#schedClear').onclick = async () => { for (const p of PROGRAMS) await idbDel('schedule:' + p.id); await idbDel('schedule'); setStatus('Local schedules cleared — reloading the published ones…'); await boot(true); };
@@ -1327,7 +1380,7 @@
         }
       }
       if (!s) { try { const r = await fetch(p.file, { cache: 'no-store' }); if (r.ok) { s = await r.json(); src = 'published ' + p.file; } } catch (e) { } }
-      if (s) { S = s; index(); PS[p.id] = { S, X, src }; } else delete PS[p.id];
+      if (s) { await loadHist(p.id); s._pid = p.id; await ensureSnap(p.id, s); S = s; index(); PS[p.id] = { S, X, src }; } else delete PS[p.id];
     }));
     await loadSlides();
     activate(ACTIVE);
@@ -1350,6 +1403,10 @@
         // never replace a newer programme on the site with an older copy kept in this browser
         const guard = async () => { try { const r = await fetch(p.file, { cache: 'no-store' }); if (!r.ok) return true; const q = await r.json(); return (q.meta?.update?.dataDate || 0) <= (s.meta?.update?.dataDate || 0); } catch (e) { return true; } };
         out.push({ id: 'sched-' + p.id, label: 'Schedule — ' + p.name, path: p.file, key: txt, bytes: () => new TextEncoder().encode(txt), guard, older: 'older than the programme on the site — clear it in Import › 2 (Clear local schedules)' });
+      }
+      for (const p of PROGRAMS) {
+        const h = await idbGet('history:' + p.id);
+        if (h && h.snaps && h.snaps.length) { const t = JSON.stringify({ v: 1, snaps: h.snaps }); out.push({ id: 'hist-' + p.id, label: 'Progress history — ' + p.name + ' (' + h.snaps.length + ' updates)', path: 'data/history-' + p.id + '.json', key: t, bytes: () => new TextEncoder().encode(t) }); }
       }
       const sl = await idbGet('slides');
       // legacy slide images are not shown once weekly PowerPoints exist — nothing to publish then
