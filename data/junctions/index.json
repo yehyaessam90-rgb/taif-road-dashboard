@@ -1,7 +1,7 @@
 {
  "v": 1,
- "rev": 1794125135288,
- "updated": "2026-11-08T08:05:35.288Z",
+ "rev": 1794214357237,
+ "updated": "2026-11-09T08:52:37.237Z",
  "weeks": [
   {
    "date": "2026-10-31",
@@ -94,6 +94,48 @@
   }
  ],
  "daily": [
+  {
+   "date": "2026-11-09",
+   "key": "J7",
+   "photos": [
+    {
+     "file": "data/junctions/daily/2026-11-09/J7/01.jpg",
+     "thumb": "data/junctions/daily/2026-11-09/J7/01_t.jpg",
+     "size": 467914,
+     "w": 1600,
+     "h": 1200,
+     "cap": "",
+     "name": "JN 07 01.jpeg"
+    },
+    {
+     "file": "data/junctions/daily/2026-11-09/J7/02.jpg",
+     "thumb": "data/junctions/daily/2026-11-09/J7/02_t.jpg",
+     "size": 491142,
+     "w": 1600,
+     "h": 1200,
+     "cap": "",
+     "name": "JN 07 02.jpeg"
+    },
+    {
+     "file": "data/junctions/daily/2026-11-09/J7/03.jpg",
+     "thumb": "data/junctions/daily/2026-11-09/J7/03_t.jpg",
+     "size": 502612,
+     "w": 1600,
+     "h": 1200,
+     "cap": "",
+     "name": "JN 07 03.jpeg"
+    },
+    {
+     "file": "data/junctions/daily/2026-11-09/J7/04.jpg",
+     "thumb": "data/junctions/daily/2026-11-09/J7/04_t.jpg",
+     "size": 488057,
+     "w": 1600,
+     "h": 1200,
+     "cap": "",
+     "name": "JN 07 04.jpeg"
+    }
+   ]
+  },
   {
    "date": "2026-11-08",
    "key": "J7",
