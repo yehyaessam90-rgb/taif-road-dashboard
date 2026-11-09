@@ -176,8 +176,8 @@
     allRecs(node).forEach(r => r.qa.forEach(x => {
       if (!x.group) return;
       const key = x.group + '|' + x.name + '|' + x.unit;
-      const t = g.get(key) || { group: x.group, unit: x.unit, name: x.name, tot: 0, exe: 0, n: 0 };
-      t.tot += x.tot; t.exe += x.tot * r.a.p / 100; t.n++; g.set(key, t);
+      const t = g.get(key) || { key, group: x.group, unit: x.unit, name: x.name, tot: 0, exe: 0, n: 0, recs: [] };
+      t.tot += x.tot; t.exe += x.tot * r.a.p / 100; t.n++; t.recs.push([r, x]); g.set(key, t);
     }));
     return [...g.values()].sort((a, b) => a.group.localeCompare(b.group, undefined, { numeric: true }));
   }
@@ -188,7 +188,7 @@
     return `<div class="table-wrap"><table class="tbl"><thead><tr><th>BOQ group</th><th>P6 resource</th><th class="n">BOQ qty</th><th class="n">BOQ certified</th><th class="n">P6 loaded</th><th class="n">P6 executed</th><th class="n">Certified − executed</th><th class="n">BOQ certified SAR</th></tr></thead><tbody>${G.slice(0, limit).map(t => {
       const tmp = TEMP.test(t.name), b = tmp ? null : boqGroup(t.group, t.unit), g = boqGroup(t.group, t.unit);
       const diff = b && b.tq !== null ? b.tq - t.exe : null;
-      return `<tr><td><b>${esc(t.group)}</b><div class="small muted">${esc(g ? g.name : 'not in the BOQ workbook')}${tmp ? ' · <i>temporary works — no BOQ item</i>' : ''}</div></td><td>${esc(t.name)} <span class="muted small">(${t.n} act.)</span></td>
+      return `<tr><td><b>${esc(t.group)}</b><div class="small muted">${esc(g ? g.name : 'not in the BOQ workbook')}${tmp ? ' · <i>temporary works — no BOQ item</i>' : ''}</div></td><td>${esc(t.name)} <button class="sop-acts" data-sop-grp="${esc((node.id || '') + '¦' + t.key)}" title="Show the ${t.n} activities with their Activity ID">${t.n} activit${t.n === 1 ? 'y' : 'ies'} ›</button></td>
         <td class="n">${b && b.cq !== null ? fmt(b.cq, 0) + ' ' + esc(t.unit) : '—'}</td><td class="n">${b && b.tq !== null ? fmt(b.tq, 0) + `<div class="muted small">${b.cq ? fmtP(b.tq / b.cq * 100, 1) : ''}</div>` : '—'}</td>
         <td class="n">${fmt(t.tot, 0)} ${esc(t.unit)}</td><td class="n">${fmt(t.exe, 0)}<div class="muted small">${t.tot ? fmtP(t.exe / t.tot * 100, 1) : ''}</div></td>
         <td class="n ${diff === null ? '' : diff < -0.5 ? 'neg' : 'pos'}">${diff === null ? '—' : (diff > 0 ? '+' : '') + fmt(diff, 0)}</td><td class="n">${b ? fmtM(b.tamt) : '—'}<div class="muted small">${b && b.camt ? 'of ' + fmtM(b.camt) : ''}</div></td></tr>`;
@@ -253,7 +253,32 @@
     $('#sopLaPrint').onclick = () => { document.body.classList.add('sop-print-la'); window.print(); setTimeout(() => document.body.classList.remove('sop-print-la'), 500); };
     $('#sopLaKpi').onclick = () => $('#sopLa').scrollIntoView({ behavior: 'smooth' });
   }
+  // the activities grouped under one BOQ group / P6 resource
+  function groupDetail(nodeId, key) {
+    const node = nodeId ? find(nodeId) : TREE, t = node && groups(node).find(x => x.key === key);
+    if (!t) return { title: 'Not found', body: '' };
+    const g = boqGroup(t.group, t.unit), tmp = TEMP.test(t.name), b = tmp ? null : g;
+    const items = (A.M && A.M.items || []).filter(i => i.code && (i.code === t.group || i.code.startsWith(t.group + '.')));
+    const recs = t.recs.slice().sort((x, y) => (x[0].a.s ?? 0) - (y[0].a.s ?? 0));
+    const st = k => recs.filter(([r]) => k(r.a)).length;
+    return {
+      title: `${esc(t.group)} · ${esc(t.name)}`, sub: `${esc(g ? g.name : '')} · ${t.n} activities${nodeId ? ' in ' + esc(nodeId) : ''}`,
+      body: `<div class="dtiles">
+          <div class="dtile"><div class="lbl">Activities</div><div class="v">${t.n}</div><div class="muted small">${st(SX.isDone)} done · ${st(a => !SX.isDone(a) && a.as)} in progress · ${st(a => !a.as)} not started</div></div>
+          <div class="dtile"><div class="lbl">P6 loaded</div><div class="v">${fmt(t.tot, 0)} ${esc(t.unit)}</div></div>
+          <div class="dtile"><div class="lbl">P6 executed</div><div class="v">${fmt(t.exe, 0)} ${esc(t.unit)}</div><div class="muted small">${t.tot ? fmtP(t.exe / t.tot * 100, 1) : ''}</div></div>
+          <div class="dtile"><div class="lbl">BOQ qty · certified</div><div class="v">${b && b.cq !== null ? fmt(b.cq, 0) + ' · ' + fmt(b.tq, 0) : '—'}</div><div class="muted small">${tmp ? 'temporary works — no BOQ item' : b && b.cq ? fmtP(b.tq / b.cq * 100, 1) + ' certified' : ''}</div></div></div>
+        <h4 class="dsec">Activities (${t.n}) <button class="btn ghost" data-sop-grpx="${esc(nodeId + '¦' + key)}">⬇ Excel</button></h4>
+        <div class="table-wrap"><table class="tbl"><thead><tr><th>Activity ID</th><th>Activity</th><th>Status</th><th class="n">%</th><th class="n">Loaded</th><th class="n">Executed</th><th class="n">Remaining</th><th>Start</th><th>Finish</th></tr></thead><tbody>${recs.map(([r, x]) => `<tr class="click" data-act="${esc(r.a.c)}"><td><b>${esc(r.a.c)}</b></td><td class="small">${esc(r.a.n)}<div class="muted">${esc(pathOf(r.a))}</div></td><td>${SX.stTag(r.a)}</td><td class="n">${r.a.p}%</td><td class="n">${fmt(x.tot, 0)}</td><td class="n">${fmt(x.tot * r.a.p / 100, 0)}</td><td class="n">${fmt(x.tot * (1 - r.a.p / 100), 0)}</td><td>${SX.fd(r.a.s)}</td><td>${SX.fd(r.a.f)}</td></tr>`).join('')}</tbody>
+          <tfoot><tr><td colspan="4"><b>Total</b></td><td class="n"><b>${fmt(t.tot, 0)}</b></td><td class="n"><b>${fmt(t.exe, 0)}</b></td><td class="n"><b>${fmt(t.tot - t.exe, 0)}</b></td><td colspan="2">${esc(t.unit)}</td></tr></tfoot></table></div>
+        ${items.length ? `<h4 class="dsec">BOQ items of ${esc(t.group)} (${items.length})</h4><div class="table-wrap"><table class="tbl"><thead><tr><th>Item</th><th>Description</th><th>Unit</th><th class="n">BOQ qty</th><th class="n">Certified to date</th><th class="n">%</th><th class="n">Certified SAR</th></tr></thead><tbody>${items.map(i => `<tr><td><b>${esc(i.item)}</b></td><td class="small">${esc(i.desc)}</td><td>${esc(i.unit)}</td><td class="n">${fmt(i.rqty ?? i.cqty, 0)}</td><td class="n">${fmt(i.tqty, 0)}</td><td class="n">${(i.rqty ?? i.cqty) ? fmtP(i.tqty / (i.rqty ?? i.cqty) * 100, 1) : '—'}</td><td class="n">${fmt(i.tamt, 0)}</td></tr>`).join('')}</tbody></table></div>` : ''}`
+    };
+  }
   document.addEventListener('click', e => {
+    const gx = e.target.closest('[data-sop-grpx]');
+    if (gx) { e.stopPropagation(); const [nid, key] = gx.dataset.sopGrpx.split('¦'), node = nid ? find(nid) : TREE, t = node && groups(node).find(x => x.key === key); if (t) xlsx(`P6_activities_${t.group.replace(/\W+/g, '_')}_${t.name.replace(/\W+/g, '_')}.xlsx`, [['Activities', [['Activity ID', 'Activity', 'Item / area', 'Status', '% complete', 'Loaded qty', 'Executed qty', 'Remaining qty', 'Unit', 'BOQ group', 'Start', 'Finish']].concat(t.recs.map(([r, x]) => [r.a.c, r.a.n, pathOf(r.a), r.a.st, r.a.p, +x.tot.toFixed(2), +(x.tot * r.a.p / 100).toFixed(2), +(x.tot * (1 - r.a.p / 100)).toFixed(2), t.unit, t.group, dstr(r.a.s), dstr(r.a.f)])), [24, 60, 60, 10, 10, 12, 12, 12, 6, 12, 11, 11]]]); return; }
+    const gr = e.target.closest('[data-sop-grp]');
+    if (gr) { e.stopPropagation(); const [nid, key] = gr.dataset.sopGrp.split('¦'); A.Details.open(() => groupDetail(nid, key)); return; }
     const tg = e.target.closest('[data-sop-tg]');
     if (tg) { e.stopPropagation(); const id = tg.dataset.sopTg, n = find(id), d = id.split(' › ').length - 1; const open = ST.open[id] !== undefined ? ST.open[id] : d < 1 || !!ST.q; ST.open[id] = !open; $('#sopRows').innerHTML = rows(TREE, 0); return; }
     const r = e.target.closest('[data-sop]');

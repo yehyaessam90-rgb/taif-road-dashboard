@@ -674,3 +674,5 @@ body.printing main { padding: 0; }
 @media print { body.sop-print-la main > section, body.sop-print-la .tabs, body.sop-print-la .topbar { display: none !important; }
   body.sop-print-la #tab-sop { display: block !important; } body.sop-print-la #tab-sop > div > *:not(#sopLa) { display: none !important; } body.sop-print-la #sopLa .row-btns { display: none !important; } }
 .cut-weeks { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin: 0 0 12px; } .cut-weeks .chip { cursor: pointer; }
+.sop-acts { display: inline-block; margin-top: 3px; font: inherit; font-size: 12px; font-weight: 600; color: var(--brand); background: color-mix(in srgb, var(--brand) 8%, transparent); border: 1px solid color-mix(in srgb, var(--brand) 30%, var(--border)); border-radius: 99px; padding: 1px 9px; cursor: pointer; white-space: nowrap; }
+.sop-acts:hover { background: color-mix(in srgb, var(--brand) 16%, transparent); }
