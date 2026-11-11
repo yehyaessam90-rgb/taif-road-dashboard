@@ -1,8 +1,52 @@
 {
  "v": 1,
- "rev": 1794294814539,
- "updated": "2026-11-10T07:13:34.539Z",
+ "rev": 1794375184353,
+ "updated": "2026-11-11T05:33:04.353Z",
  "weeks": [
+  {
+   "date": "2026-11-10",
+   "file": "data/junctions/weekly/2026-11-10.pptx",
+   "name": "Taif Road Project (20) - Junctions Dashboard - 261110.pptx",
+   "size": 4276436,
+   "slides": [
+    {
+     "n": 1,
+     "key": "overview",
+     "title": "Taif Road Development — Junctions Daily Dashboard",
+     "plan": 39.72,
+     "act": 20.9
+    },
+    {
+     "n": 2,
+     "key": "J7",
+     "title": "Junction-07 (4+050) · ASEER STREET · Work Follow-Up Status",
+     "plan": 64.01,
+     "act": 38.58
+    },
+    {
+     "n": 3,
+     "key": "J5",
+     "title": "Junction-05 (7+300) · AL SHIFA STREET · Work Follow-Up Status",
+     "plan": 33.26,
+     "act": 16.99
+    },
+    {
+     "n": 4,
+     "key": "J3",
+     "title": "Junction-03 (10+500) · TAIBA STREET · Work Follow-Up Status",
+     "plan": 30.12,
+     "act": 12.65
+    },
+    {
+     "n": 5,
+     "key": "J1",
+     "title": "Junction-01 (15+400) · JEDDAH JUNCTON · Work Follow-Up Status",
+     "plan": 18.36,
+     "act": 6.07
+    }
+   ],
+   "added": "2026-11-11"
+  },
   {
    "date": "2026-10-31",
    "file": "data/junctions/weekly/2026-10-31.pptx",
