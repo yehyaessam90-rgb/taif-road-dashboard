@@ -1,0 +1,20 @@
+{
+ "name": "Taif Road Sec-C — Project Controls Dashboard",
+ "short_name": "Taif Road Sec-C",
+ "start_url": "./",
+ "display": "standalone",
+ "background_color": "#ffffff",
+ "theme_color": "#0f6b45",
+ "icons": [
+  {
+   "src": "assets/icon-180.png",
+   "sizes": "180x180",
+   "type": "image/png"
+  },
+  {
+   "src": "assets/favicon.svg",
+   "sizes": "any",
+   "type": "image/svg+xml"
+  }
+ ]
+}
