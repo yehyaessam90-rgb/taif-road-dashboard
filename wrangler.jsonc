@@ -1,0 +1,9 @@
+// Cloudflare Workers (static assets): serves this folder as the public site.
+// The site is published by the dashboard's publish bar to GitHub; Cloudflare rebuilds on every push.
+{
+  "name": "taif-road-secc",
+  "compatibility_date": "2026-11-01",
+  "assets": {
+    "directory": "."
+  }
+}
