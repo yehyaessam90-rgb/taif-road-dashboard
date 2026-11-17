@@ -235,7 +235,7 @@ canvas { -webkit-tap-highlight-color: transparent; }
 body.fs .gantt { max-height: 80vh; }
 .g-in { position: relative; }
 .g-head { position: sticky; top: 0; z-index: 4; display: flex; background: var(--surface-2); border-bottom: 1px solid var(--border); }
-.g-row { display: flex; height: 30px; border-bottom: 1px solid color-mix(in srgb, var(--border) 60%, transparent); }
+.g-row { display: flex; height: var(--rh, 30px); border-bottom: 1px solid color-mix(in srgb, var(--border) 60%, transparent); }
 .g-row:hover .g-left, .g-row:hover .g-tl { background: color-mix(in srgb, var(--brand) 6%, var(--surface)); }
 .g-left { position: sticky; left: 0; z-index: 3; flex: none; width: var(--lw, 800px); display: flex; align-items: center; gap: 0; background: var(--surface); border-right: 1px solid var(--border); font-size: 12px; padding-left: calc(6px + var(--d, 0) * 12px); }
 .g-left.hd { background: var(--surface-2); font-weight: 700; color: var(--text-2); text-transform: uppercase; font-size: 10.5px; letter-spacing: .3px; height: var(--hh, 44px); padding-left: 6px; }
@@ -262,16 +262,16 @@ body.fs .gantt { max-height: 80vh; }
 .g-dd { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--s2); z-index: 2; }
 .g-win { position: absolute; top: 0; bottom: 0; width: 0; border-left: 2px dashed var(--muted); z-index: 2; }
 .g-row .g-tl > * { z-index: 2; }
-.g-bl { position: absolute; top: 21px; height: 4px; border-radius: 2px; background: var(--muted); opacity: .55; }
-.g-bar { position: absolute; top: 6px; height: 13px; border-radius: 4px; overflow: hidden; background: color-mix(in srgb, var(--s1) 35%, var(--surface)); }
+.g-bl { position: absolute; top: calc(var(--ro, 0px) + 21px); height: 4px; border-radius: 2px; background: var(--muted); opacity: .55; }
+.g-bar { position: absolute; top: calc(var(--ro, 0px) + 6px); height: 13px; border-radius: 4px; overflow: hidden; background: color-mix(in srgb, var(--s1) 35%, var(--surface)); }
 .g-bar i { display: block; height: 100%; background: var(--s1); }
 .g-bar.done, .g-bar.done i { background: var(--good); }
 .g-bar.crit { background: color-mix(in srgb, var(--bad) 30%, var(--surface)); outline: 1.5px solid var(--bad); }
 .g-bar.crit i { background: var(--bad); }
-.g-ms { position: absolute; top: 7px; width: 12px; height: 12px; transform: rotate(45deg); background: var(--text); }
+.g-ms { position: absolute; top: calc(var(--ro, 0px) + 7px); width: 12px; height: 12px; transform: rotate(45deg); background: var(--text); }
 .g-ms.crit { background: var(--bad); } .g-ms.done { background: var(--good); }
-.g-sum { position: absolute; top: 10px; height: 8px; background: var(--text-2); border-radius: 2px; opacity: .7; }
-.g-lbl { position: absolute; top: 7px; font-size: 10.5px; color: var(--text-2); white-space: nowrap; }
+.g-sum { position: absolute; top: calc(var(--ro, 0px) + 10px); height: 8px; background: var(--text-2); border-radius: 2px; opacity: .7; }
+.g-lbl { position: absolute; top: calc(var(--ro, 0px) + 7px); font-size: 10.5px; color: var(--text-2); white-space: nowrap; }
 .g-empty { padding: 30px; text-align: center; color: var(--muted); }
 .crumb { color: var(--brand); }
 .crumb:hover { text-decoration: underline; }
@@ -734,3 +734,15 @@ body.printing main { padding: 0; }
 .p6ts p { width: 100%; margin: 0; }
 @media (max-width: 640px) { .p6cols { grid-template-columns: 1fr; } .p6mid { flex-direction: row; justify-content: center; } .p6list { height: 200px; } .p6ts { grid-template-columns: 1fr; } }
 .g-wide .g-left { position: relative; }
+
+/* drag to resize / move (P6 style) */
+.g-left.hd .gc[data-col] { position: relative; cursor: grab; }
+.gcr { position: absolute; top: 0; right: -3px; width: 7px; height: 100%; cursor: col-resize; z-index: 5; }
+.gcr:hover, body.g-dragging .gcr:active { background: color-mix(in srgb, var(--brand) 45%, transparent); }
+.g-left.hd .gc.moving { opacity: .4; }
+.gc-ghost { position: fixed; z-index: 99; pointer-events: none; padding: 5px 10px; border-radius: 6px; background: var(--brand); color: #fff; font-size: 11px; font-weight: 700; text-transform: uppercase; box-shadow: 0 6px 18px rgba(0,0,0,.25); }
+.gc-mark { position: fixed; z-index: 98; width: 3px; background: var(--brand); pointer-events: none; }
+#gantt.g-rowrs, #gantt.g-rowrs * { cursor: row-resize !important; }
+body.g-dragging, body.g-dragging * { user-select: none !important; }
+.g-tall .g-row:not(.g-wbs) .g-left .gc.t { white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-height: 1.25; overflow: hidden; }
+.g-tall .g-row .g-left .gc { align-self: center; }

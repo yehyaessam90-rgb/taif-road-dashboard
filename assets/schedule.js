@@ -547,6 +547,11 @@
   (() => { try { const v = JSON.parse(localStorage.getItem(TSK) || 'null'); if (v) Object.assign(F, { lines: v.lines || 'two', iv: v.iv || '', tsStart: v.tsStart || '', tsFinish: v.tsFinish || '' }); } catch (e) { } })();
   const saveTs = () => { try { localStorage.setItem(TSK, JSON.stringify({ lines: F.lines, iv: F.iv, tsStart: F.tsStart, tsFinish: F.tsFinish })); } catch (e) { } };
   let LW = 800;
+  // user sizes (drag the header edge / the row edge, like P6)
+  const lsGet = (k, d) => { try { return JSON.parse(localStorage.getItem(k) || 'null') ?? d; } catch (e) { return d; } };
+  const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { } };
+  let CW = lsGet('trd_gcolw', {}), RH = lsGet('trd_growh', 30);
+  const colW = c => Math.max(28, CW[c.id] || c.w);
   let lastRows = [];
   let lastX = null;
   function drawGantt() {
@@ -576,7 +581,7 @@
     if (t1 <= t0) t1 = t0 + 7 * DAY;
     if (!F.tsFrom) { t0 = new Date(t0); t0 = Date.UTC(t0.getUTCFullYear(), t0.getUTCMonth(), t0.getUTCDate() - ((t0.getUTCDay() + 6) % 7)); } // Monday
     const box0 = $('#gantt');
-    LW = 8 + GCOLS.reduce((s_, id) => s_ + COLMAP[id].w, 0);
+    LW = 8 + GCOLS.reduce((s_, id) => s_ + colW(COLMAP[id]), 0);
     if (F.iv) F.zoom = lowUnit(F.iv) || F.zoom;
     if (F.fit && box0) { const avail = Math.max(300, box0.clientWidth - LW - 50); F.scale = Math.max(0.05, avail / ((t1 - t0) / DAY) / PX[F.zoom]); F.fit = false; }
     const px = PX[F.zoom] * F.scale;
@@ -604,8 +609,8 @@
     const rows = [];
     const cols = GCOLS.map(id => COLMAP[id]);
     let lead = 0; while (lead < cols.length && cols[lead].k === 't') lead++; if (!lead) lead = 1;
-    const leadW = cols.slice(0, lead).reduce((s_, c) => s_ + c.w, 0);
-    const cell = (c, v, i, depth) => `<span class="gc ${c.k} ${v[1] || ''}" style="width:${c.w}px${i === 0 ? `;padding-left:${4 + depth * 12}px` : ''}" title="${esc(v[0])}">${esc(v[0])}</span>`;
+    const leadW = cols.slice(0, lead).map(c => `var(--cw-${c.id})`).join(' + ');
+    const cell = (c, v, i, depth) => `<span class="gc ${c.k} ${v[1] || ''}" style="width:var(--cw-${c.id})${i === 0 ? `;padding-left:${4 + depth * 12}px` : ''}" title="${esc(v[0])}">${esc(v[0])}</span>`;
     const actRow = (a, depth) => {
       const cls = isDone(a) ? 'done' : critical(a) ? 'crit' : isActive(a) ? 'act' : 'ns';
       let bars = '';
@@ -621,7 +626,7 @@
       return `<div class="g-row click" data-act="${esc(a.c)}"><div class="g-left">${cols.map((c, i) => cell(c, c.a(a), i, depth)).join('')}</div>
         <div class="g-tl" style="width:${W}px">${bars}</div></div>`;
     };
-    const wbsCells = (w, g, col) => `<span class="gc t gw" style="width:${leadW}px;padding-left:${2 + w.depth * 12}px" title="${esc(w.code + ' ' + w.name)} — ${g.n.toLocaleString()} activities, ${g.done.toLocaleString()} completed"><span class="c-tg">${col ? '▸' : '▾'}</span><b>${esc(w.code)}</b>&nbsp;${esc(w.name)} <em class="c-cnt">${g.n.toLocaleString()}</em></span>`
+    const wbsCells = (w, g, col) => `<span class="gc t gw" style="width:calc(${leadW});padding-left:${2 + w.depth * 12}px" title="${esc(w.code + ' ' + w.name)} — ${g.n.toLocaleString()} activities, ${g.done.toLocaleString()} completed"><span class="c-tg">${col ? '▸' : '▾'}</span><b>${esc(w.code)}</b>&nbsp;${esc(w.name)} <em class="c-cnt">${g.n.toLocaleString()}</em></span>`
       + cols.slice(lead).map(c => cell(c, c.w_ ? c.w_(g) : [''], -1, 0)).join('');
     if (F.group) {
       const byW = {};
@@ -655,8 +660,10 @@
     const keep = F.keepScroll ? [box.scrollLeft, box.scrollTop] : null; F.keepScroll = false;
     const wide = LW > box.clientWidth * 0.6; box.classList.toggle('g-wide', wide);
     box.style.setProperty('--lw', LW + 'px'); box.style.setProperty('--hh', (bands.length * 22) + 'px');
-    box.innerHTML = `<div class="g-in" style="width:${W + LW}px">
-      <div class="g-head"><div class="g-left hd">${cols.map(c => `<span class="gc ${c.k}" style="width:${c.w}px" title="${esc(c.l)} — right-click for Columns…">${esc(c.h || c.l)}</span>`).join('')}</div>
+    cols.forEach(c => box.style.setProperty('--cw-' + c.id, colW(c) + 'px'));
+    box.style.setProperty('--rh', RH + 'px'); box.style.setProperty('--ro', ((RH - 30) / 2) + 'px'); box.classList.toggle('g-tall', RH >= 40);
+    box.innerHTML = `<div class="g-in" style="width:calc(${W}px + var(--lw))">
+      <div class="g-head"><div class="g-left hd">${cols.map(c => `<span class="gc ${c.k}" data-col="${c.id}" style="width:var(--cw-${c.id})" title="${esc(c.l)} — drag to move · drag the edge to resize · double-click the edge to reset · right-click for Columns…">${esc(c.h || c.l)}<i class="gcr" data-rs="${c.id}"></i></span>`).join('')}</div>
         <div class="g-tl hd" style="width:${W}px">${hdRows}</div></div>
       <div class="g-body"><div class="g-grid" style="width:${W}px">${grid}<b class="g-dd" style="left:${x(dd)}px" title="Data date ${fd(dd)}"></b>${win && F.view === 'lookahead' ? `<b class="g-win" style="left:${x(win[1] + DAY)}px"></b>` : ''}</div>${rows.join('')}</div></div>
       ${rows.length >= LIMIT ? `<div class="g-empty">Showing the first ${LIMIT} rows — narrow the filters (WBS / search) to see the rest.</div>` : ''}`;
@@ -1208,13 +1215,14 @@
     items.push(['sep']);
     items.push(['cols', 'Columns…', () => colDialog()]);
     items.push(['ts', 'Timescale…', () => tsDialog()]);
+    if (Object.keys(CW).length || RH !== 30) items.push(['sizes', 'Reset column widths & row height', () => { CW = {}; RH = 30; lsSet('trd_gcolw', CW); lsSet('trd_growh', RH); }]);
     items.push(['zin', 'Zoom in', () => ZOOM(() => { F.scale = Math.min(4, +(F.scale * 1.25).toFixed(3)); })]);
     items.push(['zout', 'Zoom out', () => ZOOM(() => { F.scale = Math.max(0.05, +(F.scale / 1.25).toFixed(3)); })]);
     const m = document.createElement('div');
     m.className = 'ctx-menu';
     m.innerHTML = items.map((it, i) => it[0] === 'sep' ? '<hr>' : it[0] === 'head' ? `<div class="ctx-h" title="${esc(it[1])}">${esc(it[1])}</div>`
       : it[0] === 'levels' ? `<div class="ctx-lv"><span>${it[1]}</span>${it[3].map(n => `<button data-lv="${n}" title="Expand to level ${n}">${n}</button>`).join('')}</div>`
-      : `<button data-i="${i}"><i>${{ collapse: '▸', expand: '▾', expandAll: '⊞', collapseAll: '⊟', up: '⤴', info: 'ⓘ', act: '▤', cols: '▥', ts: '◷', zin: '＋', zout: '−' }[it[0]] || ''}</i>${esc(it[1])}</button>`).join('');
+      : `<button data-i="${i}"><i>${{ collapse: '▸', expand: '▾', expandAll: '⊞', collapseAll: '⊟', up: '⤴', info: 'ⓘ', act: '▤', sizes: '↔', cols: '▥', ts: '◷', zin: '＋', zout: '−' }[it[0]] || ''}</i>${esc(it[1])}</button>`).join('');
     document.body.appendChild(m);
     const r = m.getBoundingClientRect();
     m.style.left = Math.max(4, Math.min(e.clientX, innerWidth - r.width - 6)) + 'px';
@@ -1230,6 +1238,67 @@
   }
   function closeMenu() { $$('.ctx-menu').forEach(x => x.remove()); }
   document.addEventListener('contextmenu', ganttMenu);
+  // ---- resize columns / rows and move columns by dragging (P6 style) ----
+  let dragJustEnded = false;
+  const ROW_EDGE = 5;
+  const nearRowEdge = (e, row) => { const r = row.getBoundingClientRect(); return r.bottom - e.clientY <= ROW_EDGE && r.bottom - e.clientY >= -1; };
+  document.addEventListener('mousemove', e => {
+    const box = $('#gantt'); if (!box || !box.contains(e.target) || e.buttons) return;
+    const row = e.target.closest('.g-row .g-left'); box.classList.toggle('g-rowrs', !!(row && nearRowEdge(e, row)));
+  });
+  document.addEventListener('mousedown', e => {
+    if (e.button !== 0) return;
+    const box = $('#gantt'); if (!box || !box.contains(e.target)) return;
+    const done = fn => { const up = () => { document.removeEventListener('mousemove', fn); document.removeEventListener('mouseup', up); document.body.classList.remove('g-dragging'); fn(null); }; document.addEventListener('mousemove', fn); document.addEventListener('mouseup', up); document.body.classList.add('g-dragging'); };
+    const rs = e.target.closest('.gcr');
+    if (rs) { // column width
+      e.preventDefault(); e.stopPropagation();
+      const id = rs.dataset.rs, c = COLMAP[id], w0 = colW(c), x0 = e.clientX, lw0 = LW;
+      let w = w0;
+      done(ev => {
+        if (ev) { w = Math.max(28, Math.min(700, Math.round(w0 + ev.clientX - x0))); box.style.setProperty('--cw-' + id, w + 'px'); box.style.setProperty('--lw', (lw0 + w - w0) + 'px'); return; }
+        if (w !== w0) { CW[id] = w; lsSet('trd_gcolw', CW); dragJustEnded = true; F.keepScroll = true; drawGantt(); }
+      });
+      return;
+    }
+    const row = e.target.closest('.g-row .g-left');
+    if (row && nearRowEdge(e, row)) { // row height (all rows, like P6)
+      e.preventDefault();
+      const y0 = e.clientY, h0 = RH; let h = h0;
+      done(ev => {
+        if (ev) { h = Math.max(22, Math.min(90, Math.round(h0 + ev.clientY - y0))); box.style.setProperty('--rh', h + 'px'); box.style.setProperty('--ro', ((h - 30) / 2) + 'px'); box.classList.toggle('g-tall', h >= 40); return; }
+        dragJustEnded = true; if (h !== h0) { RH = h; lsSet('trd_growh', RH); }
+      });
+      return;
+    }
+    const hc = e.target.closest('.g-left.hd .gc[data-col]');
+    if (hc) { // move a column
+      e.preventDefault();
+      const id = hc.dataset.col, x0 = e.clientX; let moving = false, ghost = null, mark = null, to = -1;
+      const cells = [...hc.parentNode.querySelectorAll('.gc[data-col]')];
+      done(ev => {
+        if (ev) {
+          if (!moving && Math.abs(ev.clientX - x0) < 6) return;
+          if (!moving) { moving = true; ghost = document.createElement('div'); ghost.className = 'gc-ghost'; ghost.textContent = hc.textContent; document.body.appendChild(ghost); mark = document.createElement('div'); mark.className = 'gc-mark'; document.body.appendChild(mark); hc.classList.add('moving'); }
+          ghost.style.left = ev.clientX + 8 + 'px'; ghost.style.top = ev.clientY + 8 + 'px';
+          to = cells.length; for (let i = 0; i < cells.length; i++) { const r = cells[i].getBoundingClientRect(); if (ev.clientX < r.left + r.width / 2) { to = i; break; } }
+          const r = (cells[to] || cells[cells.length - 1]).getBoundingClientRect(), hr = hc.parentNode.getBoundingClientRect();
+          mark.style.left = (to < cells.length ? r.left : r.right) - 1 + 'px'; mark.style.top = hr.top + 'px'; mark.style.height = hr.height + 'px';
+          return;
+        }
+        if (!moving) return;
+        ghost.remove(); mark.remove(); hc.classList.remove('moving'); dragJustEnded = true;
+        const from = GCOLS.indexOf(id); if (to < 0 || to === from || to === from + 1) return;
+        GCOLS.splice(from, 1); GCOLS.splice(to > from ? to - 1 : to, 0, id); saveCols(); F.keepScroll = true; drawGantt();
+      });
+    }
+  });
+  document.addEventListener('dblclick', e => {
+    const rs = e.target.closest('#gantt .gcr'); if (!rs) return;
+    delete CW[rs.dataset.rs]; lsSet('trd_gcolw', CW); F.keepScroll = true; drawGantt();
+  });
+  // a drag must not also open the activity / WBS details
+  document.addEventListener('click', e => { if (dragJustEnded) { dragJustEnded = false; if (e.target.closest('#gantt')) { e.stopPropagation(); e.preventDefault(); } } }, true);
   document.addEventListener('wheel', e => {
     if (!(e.ctrlKey || e.metaKey) || !ZOOM) return;
     const box = $('#gantt'); if (!box || !box.contains(e.target)) return;
