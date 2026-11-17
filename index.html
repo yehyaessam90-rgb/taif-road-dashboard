@@ -33,7 +33,7 @@
   try { if (localStorage.getItem('trd_admin') === 'bb132136cba17058787561571dffaa8bfe3d15bac2e1d651b5f0fb7f76dfd34b') document.documentElement.classList.add('admin'); } catch (e) { }
 </script>
 <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="assets/styles.css?v=202611171000">
+<link rel="stylesheet" href="assets/styles.css?v=202611171200">
 <script>
   window.addEventListener('error', function (e) {
     var b = document.getElementById('jsErr');
@@ -41,8 +41,8 @@
     b.innerHTML = '⚠ The page did not load completely (' + (e.message || 'script error') + '). Press <b>Ctrl + F5</b> to reload the latest version.';
   });
 </script>
-<script src="assets/vendor/chart.umd.min.js?v=202611171000"></script>
-<script src="assets/vendor/xlsx.full.min.js?v=202611171000"></script>
+<script src="assets/vendor/chart.umd.min.js?v=202611171200"></script>
+<script src="assets/vendor/xlsx.full.min.js?v=202611171200"></script>
 </head>
 <body>
 <header class="topbar">
@@ -106,7 +106,9 @@
         <span id="gWeeksWrap"><select id="gWeeks"><option value="1">1 week</option><option value="2">2 weeks</option><option value="3">3 weeks</option><option value="4">4 weeks</option><option value="6">6 weeks</option><option value="8">8 weeks</option><option value="12">12 weeks</option></select></span>
         <span id="gAchWrap"><select id="gAch"><option value="7">Last week</option><option value="14">Last 2 weeks</option><option value="30">Last month</option><option value="90">Last 3 months</option><option value="all">Since start</option><option value="custom">Custom…</option></select>
           <span id="gCustom"><input type="date" id="gFrom"> → <input type="date" id="gTo"></span></span>
-        <div class="seg" id="gZoom"><button data-z="week">Week</button><button data-z="month">Month</button><button data-z="quarter">Quarter</button></div>
+        <div class="g-ts"><span class="muted small">Timescale</span><div class="seg" id="gZoom"><button data-z="day">Day</button><button data-z="week">Week</button><button data-z="month">Month</button><button data-z="quarter">Quarter</button><button data-z="year">Year</button></div>
+          <div class="seg"><button id="gZout" title="Zoom out">−</button><button id="gZpct" disabled>100%</button><button id="gZin" title="Zoom in">＋</button></div><button class="btn ghost" id="gFit" title="Fit the timescale to the screen">⇔ Fit</button>
+          <label class="chk small" title="Timescale start">From <input type="date" id="gTsFrom"></label><label class="chk small" title="Timescale finish">To <input type="date" id="gTsTo"></label><button class="btn ghost" id="gTsAuto" title="Back to the automatic timescale">Auto</button></div>
       </div>
       <div class="g-toolbar">
         <select id="gWbs" class="wide"><option value="">All WBS</option></select>
@@ -396,19 +398,19 @@
 </footer>
 
 <div id="tooltipHost"></div>
-<script src="data/default-data.js?v=202611171000"></script>
-<script src="assets/xer.js?v=202611171000"></script>
-<script src="assets/app.js?v=202611171000"></script>
-<script src="assets/schedule.js?v=202611171000"></script>
-<script src="assets/weekly.js?v=202611171000"></script>
-<script src="assets/logic.js?v=202611171000"></script>
-<script src="assets/outlook.js?v=202611171000"></script>
-<script src="assets/revise.js?v=202611171000"></script>
-<script src="assets/events.js?v=202611171000"></script>
-<script src="assets/jmedia.js?v=202611171000"></script>
-<script src="assets/publish.js?v=202611171000"></script>
-<script src="assets/explorer.js?v=202611171000"></script>
-<script src="assets/sop.js?v=202611171000"></script>
-<script src="assets/print.js?v=202611171000"></script>
+<script src="data/default-data.js?v=202611171200"></script>
+<script src="assets/xer.js?v=202611171200"></script>
+<script src="assets/app.js?v=202611171200"></script>
+<script src="assets/schedule.js?v=202611171200"></script>
+<script src="assets/weekly.js?v=202611171200"></script>
+<script src="assets/logic.js?v=202611171200"></script>
+<script src="assets/outlook.js?v=202611171200"></script>
+<script src="assets/revise.js?v=202611171200"></script>
+<script src="assets/events.js?v=202611171200"></script>
+<script src="assets/jmedia.js?v=202611171200"></script>
+<script src="assets/publish.js?v=202611171200"></script>
+<script src="assets/explorer.js?v=202611171200"></script>
+<script src="assets/sop.js?v=202611171200"></script>
+<script src="assets/print.js?v=202611171200"></script>
 </body>
 </html>

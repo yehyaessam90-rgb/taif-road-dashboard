@@ -687,3 +687,8 @@ body.printing main { padding: 0; }
 .ctx-lv { display: flex; align-items: center; gap: 4px; padding: 5px 10px; color: var(--text-2); }
 .ctx-lv span { flex: 1; }
 .ctx-lv button { width: 26px; justify-content: center; padding: 4px 0; border: 1px solid var(--border); }
+/* gantt timescale */
+.g-ts { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.g-ts input[type=date] { font: inherit; font-size: 13px; padding: 4px 6px; border: 1px solid var(--border); border-radius: 7px; background: var(--surface-2); color: var(--text); }
+#gZpct { min-width: 54px; color: var(--text-2); cursor: default; }
+.g-row .g-tl { overflow: hidden; }

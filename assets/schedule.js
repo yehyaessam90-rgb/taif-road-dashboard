@@ -351,7 +351,7 @@
   const sar = v => 'SAR ' + fmt(v, 0);
 
   // ---------------- filters ----------------
-  const F = { view: 'lookahead', weeks: 4, ach: 7, achFrom: '', achTo: '', wbs: '', status: '', float: '', q: '', zoom: 'week', group: true, collapsed: new Set() };
+  const F = { view: 'lookahead', weeks: 4, ach: 7, achFrom: '', achTo: '', wbs: '', status: '', float: '', q: '', zoom: 'week', scale: 1, tsFrom: '', tsTo: '', group: true, collapsed: new Set() };
   function windowOf() {
     const dd = X.dd;
     if (F.view === 'lookahead') return [dd, dd + F.weeks * 7 * DAY];
@@ -437,12 +437,20 @@
     $('#gCustom').style.display = F.view === 'achieved' && F.ach === 'custom' ? '' : 'none';
     $('#gWeeks').value = F.weeks; $('#gAch').value = F.ach; $('#gStatus').value = F.status; $('#gFloat').value = F.float;
     $$('#gZoom button').forEach(b => b.classList.toggle('on', b.dataset.z === F.zoom));
+    if ($('#gTsFrom')) { $('#gTsFrom').value = F.tsFrom; $('#gTsTo').value = F.tsTo; $('#gZpct').textContent = Math.round(F.scale * 100) + '%'; }
     $('#gGroup').checked = F.group;
   }
 
   function wireFilters() {
     $$('#gView button').forEach(b => b.onclick = () => { F.view = b.dataset.v; if (F.view === 'lookahead') F.zoom = 'week'; else if (F.view === 'all' || F.view === 'delayed') F.zoom = 'month'; syncFilters(); drawGantt(); });
-    $$('#gZoom button').forEach(b => b.onclick = () => { F.zoom = b.dataset.z; syncFilters(); drawGantt(); });
+    $$('#gZoom button').forEach(b => b.onclick = () => { F.zoom = b.dataset.z; F.scale = 1; syncFilters(); drawGantt(); });
+    const keepX = fn => { const box = $('#gantt'), mid = box ? box.scrollLeft + box.clientWidth / 2 - 800 : 0, old = PX[F.zoom] * F.scale; fn(); drawGantt(); if (box) box.scrollLeft = Math.max(0, mid * PX[F.zoom] * F.scale / old - box.clientWidth / 2 + 800); syncFilters(); };
+    $('#gZin').onclick = () => keepX(() => { F.scale = Math.min(4, +(F.scale * 1.25).toFixed(3)); });
+    $('#gZout').onclick = () => keepX(() => { F.scale = Math.max(0.25, +(F.scale / 1.25).toFixed(3)); });
+    $('#gFit').onclick = () => { F.fit = true; drawGantt(); syncFilters(); };
+    $('#gTsFrom').onchange = e => { F.tsFrom = e.target.value; F.fit = !!(F.tsFrom && F.tsTo); drawGantt(); syncFilters(); };
+    $('#gTsTo').onchange = e => { F.tsTo = e.target.value; F.fit = !!(F.tsFrom && F.tsTo); drawGantt(); syncFilters(); };
+    $('#gTsAuto').onclick = () => { F.tsFrom = F.tsTo = ''; F.scale = 1; syncFilters(); drawGantt(); };
     $('#gWeeks').onchange = e => { F.weeks = +e.target.value; drawGantt(); };
     $('#gAch').onchange = e => { F.ach = e.target.value === 'custom' || e.target.value === 'all' ? e.target.value : +e.target.value; syncFilters(); drawGantt(); };
     $('#gFrom').onchange = e => { F.achFrom = e.target.value; drawGantt(); };
@@ -452,13 +460,14 @@
     $('#gFloat').onchange = e => { F.float = e.target.value; drawGantt(); };
     $('#gSearch').oninput = e => { F.q = e.target.value; clearTimeout(wireFilters.t); wireFilters.t = setTimeout(drawGantt, 200); };
     $('#gGroup').onchange = e => { F.group = e.target.checked; drawGantt(); };
-    $('#gReset').onclick = () => { Object.assign(F, { view: 'lookahead', weeks: 4, ach: 7, wbs: '', status: '', float: '', q: '', zoom: 'week', group: true }); F.collapsed.clear(); $('#gSearch').value = ''; syncFilters(); drawGantt(); };
+    $('#gReset').onclick = () => { Object.assign(F, { view: 'lookahead', weeks: 4, ach: 7, wbs: '', status: '', float: '', q: '', zoom: 'week', scale: 1, tsFrom: '', tsTo: '', group: true }); F.collapsed.clear(); $('#gSearch').value = ''; syncFilters(); drawGantt(); };
     $('#gCsv').onclick = exportCsv;
     $('#gExpand').onclick = () => { F.collapsed.clear(); drawGantt(); };
     $('#gCollapse').onclick = () => { S.wbs.forEach(w => F.collapsed.add(w.id)); drawGantt(); };
   }
 
-  const PX = { week: 16, month: 3.2, quarter: 1.1 };
+  // timescale: pixels per day for each level (× the zoom factor)
+  const PX = { day: 34, week: 16, month: 3.2, quarter: 1.1, year: 0.36 };
   let lastRows = [];
   function drawGantt() {
     const list = filtered();
@@ -478,23 +487,31 @@
       if (F.view === 'achieved') { t0 = Math.min(t0, win[0]); t1 = Math.max(t1, dd); }
       t0 -= 7 * DAY; t1 += 14 * DAY;
     }
-    t0 = new Date(t0); t0 = Date.UTC(t0.getUTCFullYear(), t0.getUTCMonth(), t0.getUTCDate() - ((t0.getUTCDay() + 6) % 7)); // Monday
-    const px = PX[F.zoom];
+    // timescale start / finish chosen by the user
+    if (F.tsFrom && pd(F.tsFrom) !== null) t0 = pd(F.tsFrom);
+    if (F.tsTo && pd(F.tsTo) !== null) t1 = pd(F.tsTo) + DAY;
+    if (t1 <= t0) t1 = t0 + 7 * DAY;
+    if (!F.tsFrom) { t0 = new Date(t0); t0 = Date.UTC(t0.getUTCFullYear(), t0.getUTCMonth(), t0.getUTCDate() - ((t0.getUTCDay() + 6) % 7)); } // Monday
+    const box0 = $('#gantt');
+    if (F.fit && box0) { const avail = Math.max(300, box0.clientWidth - 800 - 50); F.scale = Math.max(0.05, avail / ((t1 - t0) / DAY) / PX[F.zoom]); F.fit = false; }
+    const px = PX[F.zoom] * F.scale;
     const W = Math.ceil((t1 - t0) / DAY * px) + 40;
     const x = t => (t - t0) / DAY * px;
 
-    // header
-    let hdTop = '', hdBot = '';
-    for (let m = monthStart(t0); m <= t1; m = addMonths(m, 1)) {
-      const a = Math.max(0, x(m)), b = Math.min(W, x(addMonths(m, 1)));
-      if (b > a) hdTop += `<div class="g-hc" style="left:${a}px;width:${b - a}px">${new Date(m).toLocaleDateString('en-GB', { month: F.zoom === 'quarter' ? 'short' : 'long', year: F.zoom === 'quarter' ? '2-digit' : 'numeric', timeZone: 'UTC' })}</div>`;
-    }
-    let grid = '';
-    if (F.zoom === 'week') {
-      for (let d = t0; d <= t1; d += 7 * DAY) { hdBot += `<div class="g-hc sm" style="left:${x(d)}px;width:${7 * px}px">${new Date(d).getUTCDate()}</div>`; grid += `<i style="left:${x(d)}px"></i>`; }
-    } else {
-      for (let m = monthStart(t0); m <= t1; m = addMonths(m, 1)) grid += `<i style="left:${x(m)}px"></i>`;
-    }
+    // header: upper band + lower band, depending on the level (P6 style)
+    const yearStart = t => Date.UTC(new Date(t).getUTCFullYear(), 0, 1);
+    const qStart = t => { const d = new Date(t); return Date.UTC(d.getUTCFullYear(), Math.floor(d.getUTCMonth() / 3) * 3, 1); };
+    const band = (first, next, label, cls) => { let h = '', g = ''; for (let u = first(t0); u <= t1; u = next(u)) { const a = Math.max(0, x(u)), b = Math.min(W, x(next(u))); if (b > a) h += `<div class="g-hc ${cls}" style="left:${a}px;width:${b - a}px" title="${esc(label(u, true))}">${b - a > 14 ? esc(label(u, b - a > 60)) : ''}</div>`; if (u >= t0) g += `<i style="left:${x(u)}px"></i>`; } return [h, g]; };
+    const mName = (u, long) => new Date(u).toLocaleDateString('en-GB', { month: long ? 'long' : 'short', year: long ? 'numeric' : '2-digit', timeZone: 'UTC' });
+    const dayB = [t => Math.floor(t / DAY) * DAY, u => u + DAY, u => { const d = new Date(u); return (d.getUTCDay() === 5 ? '·' : '') + d.getUTCDate(); }];
+    const weekB = [t => t, u => u + 7 * DAY, u => String(new Date(u).getUTCDate())];
+    const monthB = [monthStart, u => addMonths(u, 1), mName];
+    const qB = [qStart, u => addMonths(u, 3), u => 'Q' + (Math.floor(new Date(u).getUTCMonth() / 3) + 1) + ' ' + String(new Date(u).getUTCFullYear()).slice(2)];
+    const yB = [yearStart, u => Date.UTC(new Date(u).getUTCFullYear() + 1, 0, 1), u => String(new Date(u).getUTCFullYear())];
+    const L = { day: [monthB, dayB], week: [monthB, weekB], month: [yB, monthB], quarter: [yB, qB], year: [yB, yB] }[F.zoom];
+    const [hdTop] = band(L[0][0], L[0][1], L[0][2], '');
+    let [hdBot, grid] = band(L[1][0], L[1][1], L[1][2], 'sm');
+    if (F.zoom === 'year') hdBot = '';
 
     // rows (grouped by WBS)
     const LIMIT = 2500;
