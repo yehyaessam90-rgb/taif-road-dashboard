@@ -351,6 +351,7 @@
   const sar = v => 'SAR ' + fmt(v, 0);
 
   // ---------------- filters ----------------
+  let ZOOM = null;
   const F = { view: 'lookahead', weeks: 4, ach: 7, achFrom: '', achTo: '', wbs: '', status: '', float: '', q: '', zoom: 'week', scale: 1, tsFrom: '', tsTo: '', group: true, collapsed: new Set() };
   function windowOf() {
     const dd = X.dd;
@@ -443,14 +444,17 @@
 
   function wireFilters() {
     $$('#gView button').forEach(b => b.onclick = () => { F.view = b.dataset.v; if (F.view === 'lookahead') F.zoom = 'week'; else if (F.view === 'all' || F.view === 'delayed') F.zoom = 'month'; syncFilters(); drawGantt(); });
-    $$('#gZoom button').forEach(b => b.onclick = () => { F.zoom = b.dataset.z; F.scale = 1; syncFilters(); drawGantt(); });
-    const keepX = fn => { const box = $('#gantt'), mid = box ? box.scrollLeft + box.clientWidth / 2 - 800 : 0, old = PX[F.zoom] * F.scale; fn(); drawGantt(); if (box) box.scrollLeft = Math.max(0, mid * PX[F.zoom] * F.scale / old - box.clientWidth / 2 + 800); syncFilters(); };
+    $$('#gZoom button').forEach(b => b.onclick = () => { F.zoom = b.dataset.z; F.iv = ''; F.scale = 1; saveTs(); syncFilters(); drawGantt(); });
+    $('#gCols').onclick = () => colDialog();
+    $('#gTsDlg').onclick = () => tsDialog();
+    const keepX = fn => { const box = $('#gantt'), mid = box ? box.scrollLeft + box.clientWidth / 2 - LW : 0, old = PX[F.zoom] * F.scale, top = box ? box.scrollTop : 0; fn(); drawGantt(); if (box) { box.scrollLeft = Math.max(0, mid * PX[F.zoom] * F.scale / old - box.clientWidth / 2 + LW); box.scrollTop = top; } syncFilters(); };
+    ZOOM = keepX;
     $('#gZin').onclick = () => keepX(() => { F.scale = Math.min(4, +(F.scale * 1.25).toFixed(3)); });
-    $('#gZout').onclick = () => keepX(() => { F.scale = Math.max(0.25, +(F.scale / 1.25).toFixed(3)); });
+    $('#gZout').onclick = () => keepX(() => { F.scale = Math.max(0.05, +(F.scale / 1.25).toFixed(3)); });
     $('#gFit').onclick = () => { F.fit = true; drawGantt(); syncFilters(); };
     $('#gTsFrom').onchange = e => { F.tsFrom = e.target.value; F.fit = !!(F.tsFrom && F.tsTo); drawGantt(); syncFilters(); };
     $('#gTsTo').onchange = e => { F.tsTo = e.target.value; F.fit = !!(F.tsFrom && F.tsTo); drawGantt(); syncFilters(); };
-    $('#gTsAuto').onclick = () => { F.tsFrom = F.tsTo = ''; F.scale = 1; syncFilters(); drawGantt(); };
+    $('#gTsAuto').onclick = () => { F.tsFrom = F.tsTo = F.tsStart = F.tsFinish = ''; F.scale = 1; saveTs(); syncFilters(); drawGantt(); };
     $('#gWeeks').onchange = e => { F.weeks = +e.target.value; drawGantt(); };
     $('#gAch').onchange = e => { F.ach = e.target.value === 'custom' || e.target.value === 'all' ? e.target.value : +e.target.value; syncFilters(); drawGantt(); };
     $('#gFrom').onchange = e => { F.achFrom = e.target.value; drawGantt(); };
@@ -460,7 +464,7 @@
     $('#gFloat').onchange = e => { F.float = e.target.value; drawGantt(); };
     $('#gSearch').oninput = e => { F.q = e.target.value; clearTimeout(wireFilters.t); wireFilters.t = setTimeout(drawGantt, 200); };
     $('#gGroup').onchange = e => { F.group = e.target.checked; drawGantt(); };
-    $('#gReset').onclick = () => { Object.assign(F, { view: 'lookahead', weeks: 4, ach: 7, wbs: '', status: '', float: '', q: '', zoom: 'week', scale: 1, tsFrom: '', tsTo: '', group: true }); F.collapsed.clear(); $('#gSearch').value = ''; syncFilters(); drawGantt(); };
+    $('#gReset').onclick = () => { Object.assign(F, { view: 'lookahead', weeks: 4, ach: 7, wbs: '', status: '', float: '', q: '', zoom: 'week', scale: 1, tsFrom: '', tsTo: '', tsStart: '', tsFinish: '', iv: '', lines: 'two', group: true }); saveTs(); F.collapsed.clear(); $('#gSearch').value = ''; syncFilters(); drawGantt(); };
     $('#gCsv').onclick = exportCsv;
     $('#gExpand').onclick = () => { F.collapsed.clear(); drawGantt(); };
     $('#gCollapse').onclick = () => { S.wbs.forEach(w => F.collapsed.add(w.id)); drawGantt(); };
@@ -468,7 +472,83 @@
 
   // timescale: pixels per day for each level (× the zoom factor)
   const PX = { day: 34, week: 16, month: 3.2, quarter: 1.1, year: 0.36 };
+  // date intervals (P6 Timescale dialog): upper → lower band; the lowest unit sets the default zoom
+  const INTERVALS = {
+    two: ['Year/Quarter', 'Year/Month', 'Quarter/Month', 'Month/Week', 'Month/Day', 'Week/Day'],
+    three: ['Year/Quarter/Month', 'Year/Month/Week', 'Quarter/Month/Week', 'Month/Week/Day']
+  };
+  const ZOOM_IV = { day: 'Month/Day', week: 'Month/Week', month: 'Year/Month', quarter: 'Year/Quarter', year: 'Year' };
+  const lowUnit = iv => ({ Day: 'day', Week: 'week', Month: 'month', Quarter: 'quarter', Year: 'year' })[iv.split('/').pop()];
+
+  // ---------------- Gantt columns (P6 style) ----------------
+  const LAB = {};
+  function labUnits() {
+    if (LAB._S === S) return LAB;
+    Object.keys(LAB).forEach(k => delete LAB[k]); LAB._S = S;
+    (S.ra || []).forEach(r => { const rs = S.rl[r[1]], a = S.acts[r[0]]; if (!rs || rs[2] !== 'L' || !a) return; const o = LAB[a.c] || (LAB[a.c] = { b: 0, r: 0 }); o.b += r[2]; o.r += a.st === 'Complete' ? 0 : r[4]; });
+    return LAB;
+  }
+  const nf = (v, d = 0) => v === null || v === undefined || !isFinite(v) ? '—' : Number(v).toLocaleString('en-US', { maximumFractionDigits: d, minimumFractionDigits: d });
+  const dDays = (a, b) => a === null || b === null || a === undefined || b === undefined || !isFinite(a) || !isFinite(b) ? null : Math.round((a - b) / DAY);
+  const sg = (v, lateNeg) => v === null ? ['—'] : [(v > 0 ? '+' : '') + v, v === 0 ? '' : (lateNeg ? v < 0 : v > 0) ? 'neg' : 'pos'];
+  const fdc = t => t === null || t === undefined || !isFinite(t) ? '—' : fd(t);
+  const pc = v => v === null || !isFinite(v) ? '—' : (v < 10 && v > 0 ? v.toFixed(1) : Math.round(v)) + '%';
+  const TYPE = { Task: 'Task Dependent', Mile: 'Start Milestone', FinMile: 'Finish Milestone', LOE: 'Level of Effort', Rsrc: 'Resource Dependent', WBS: 'WBS Summary' };
+  const STAT = { NotStart: 'Not Started', Active: 'In Progress', Complete: 'Completed' };
+  const CSTR = { MSOA: 'Start On or After', MSOB: 'Start On or Before', MEOA: 'Finish On or After', MEOB: 'Finish On or Before', MSO: 'Start On', MEO: 'Finish On', MANDSTART: 'Mandatory Start', MANDFIN: 'Mandatory Finish', ALAP: 'As Late As Possible' };
+  // k: t = text (a WBS row shows its name across the leading text columns), d = date, n = number
+  // a(activity) / w(WBS aggregate) → [text, class]
+  const COLS = [
+    { id: 'id', g: 'General', l: 'Activity ID', w: 165, k: 't', a: a => [a.c] },
+    { id: 'name', g: 'General', l: 'Activity Name', w: 260, k: 't', a: a => [a.n] },
+    { id: 'type', g: 'General', l: 'Activity Type', h: 'Type', w: 110, k: 't', a: a => [TYPE[a.t] || a.t] },
+    { id: 'status', g: 'General', l: 'Activity Status', h: 'Status', w: 88, k: 't', a: a => [STAT[a.st] || a.st] },
+    { id: 'wbs', g: 'General', l: 'WBS Code', h: 'WBS', w: 110, k: 't', a: a => [X.W[a.w] ? X.W[a.w].code : ''] },
+    { id: 'wbsn', g: 'General', l: 'WBS Name', w: 200, k: 't', a: a => [X.W[a.w] ? X.W[a.w].name : ''] },
+    { id: 'cstr', g: 'General', l: 'Primary Constraint', h: 'Constraint', w: 120, k: 't', a: a => [a.cs ? CSTR[a.cs] || a.cs : ''] },
+    { id: 'crit', g: 'General', l: 'Critical', w: 58, k: 't', a: a => critical(a) ? ['Yes', 'neg'] : [''] },
+    { id: 'drv', g: 'General', l: 'Longest Path / Driving', h: 'Driving', w: 62, k: 't', a: a => [a.dr ? 'Yes' : ''] },
+    { id: 'start', g: 'Dates', l: 'Start', w: 84, k: 'd', a: a => [fdc(a.s)], w_: g => [fdc(g.s)] },
+    { id: 'finish', g: 'Dates', l: 'Finish', w: 84, k: 'd', a: a => [fdc(a.f)], w_: g => [fdc(g.f)] },
+    { id: 'as', g: 'Dates', l: 'Actual Start', h: 'Act. Start', w: 84, k: 'd', a: a => [fdc(a.as)], w_: g => [fdc(g.as)] },
+    { id: 'af', g: 'Dates', l: 'Actual Finish', h: 'Act. Finish', w: 84, k: 'd', a: a => [fdc(a.af)], w_: g => [g.done === g.n ? fdc(g.af) : '—'] },
+    { id: 'bs', g: 'Dates', l: 'BL Project Start', h: 'BL Start', w: 84, k: 'd', a: a => [fdc(a.bs)], w_: g => [fdc(g.bs)] },
+    { id: 'bf', g: 'Dates', l: 'BL Project Finish', h: 'BL Finish', w: 84, k: 'd', a: a => [fdc(a.bf)], w_: g => [fdc(g.bf)] },
+    { id: 'svar', g: 'Dates', l: 'Variance - BL Project Start Date (days, − = late)', h: 'Var BL Start', w: 72, k: 'n', a: a => sg(dDays(a.bs, a.s), true), w_: g => sg(dDays(g.bs, g.s), true) },
+    { id: 'fvar', g: 'Dates', l: 'Variance - BL Project Finish Date (days, − = late)', h: 'Var BL Finish', w: 72, k: 'n', a: a => sg(dDays(a.bf, a.f), true), w_: g => sg(dDays(g.bf, g.f), true) },
+    { id: 'delay', g: 'Dates', l: 'Finish delay vs baseline (days, + = late)', h: 'Var d', w: 52, k: 'n', a: a => sg(finVar(a), false), w_: g => sg(dDays(g.f, g.bf), false) },
+    { id: 'od', g: 'Durations', l: 'Original Duration (d)', h: 'Orig. Dur', w: 66, k: 'n', a: a => [isMs(a) ? '0' : nf(a.d)] },
+    { id: 'rd', g: 'Durations', l: 'Remaining Duration (d)', h: 'Rem. Dur', w: 66, k: 'n', a: a => [isMs(a) ? '0' : nf(a.rd)] },
+    { id: 'ad', g: 'Durations', l: 'Actual Duration (d)', h: 'Act. Dur', w: 62, k: 'n', a: a => [a.as === null || isMs(a) ? '0' : nf(Math.max(0, a.d - a.rd))] },
+    { id: 'bld', g: 'Durations', l: 'BL Project Duration (calendar days)', h: 'BL Dur', w: 58, k: 'n', a: a => [a.bs === null ? '—' : nf(dDays(a.bf, a.bs) + 1)], w_: g => [isFinite(g.bs) && isFinite(g.bf) ? nf(dDays(g.bf, g.bs) + 1) : '—'] },
+    { id: 'pp', g: 'Percent Completes', l: 'Performance % Complete', h: 'Perf. %', w: 58, k: 'n', a: a => [pc(a.p)], w_: g => [pc(g.wt ? g.ev / g.wt * 100 : g.n ? g.done / g.n * 100 : null)] },
+    { id: 'sp', g: 'Percent Completes', l: 'Schedule % Complete (baseline at the cut-off)', h: 'Sched. %', w: 62, k: 'n', a: a => [pc(a.bs === null ? null : X.pf(a, X.dd) * 100)], w_: g => [pc(g.wt ? g.pv / g.wt * 100 : null)] },
+    { id: 'dp', g: 'Percent Completes', l: 'Duration % Complete', h: 'Dur. %', w: 56, k: 'n', a: a => [pc(a.d ? (a.d - a.rd) / a.d * 100 : isDone(a) ? 100 : 0)] },
+    { id: 'pvar', g: 'Percent Completes', l: 'Performance % − Schedule % (+ = ahead)', h: '% Var', w: 58, k: 'n', a: a => { const v = a.bs === null ? null : a.p - X.pf(a, X.dd) * 100; return v === null ? ['—'] : [(v > 0 ? '+' : '') + v.toFixed(1), Math.abs(v) < 0.05 ? '' : v < 0 ? 'neg' : 'pos']; }, w_: g => { const v = g.wt ? (g.ev - g.pv) / g.wt * 100 : null; return v === null ? ['—'] : [(v > 0 ? '+' : '') + v.toFixed(1), v < 0 ? 'neg' : 'pos']; } },
+    { id: 'tf', g: 'Float', l: 'Total Float (d)', h: 'TF', w: 48, k: 'n', a: a => isDone(a) || a.tf === null ? ['—'] : [nf(a.tf), a.tf < 0 ? 'neg' : ''], w_: g => isFinite(g.tf) ? [nf(g.tf), g.tf < 0 ? 'neg' : ''] : ['—'] },
+    { id: 'btc', g: 'Costs', l: 'Budgeted Total Cost (SAR)', h: 'Budget SAR', w: 92, k: 'n', a: a => [nf(a.wt * X.k)], w_: g => [nf(g.wt * X.k)] },
+    { id: 'remc', g: 'Costs', l: 'Remaining Total Cost (SAR, budget − EV)', h: 'Rem. SAR', w: 92, k: 'n', a: a => [nf(a.wt * (1 - a.p / 100) * X.k)], w_: g => [nf((g.wt - g.ev) * X.k)] },
+    { id: 'ev', g: 'Earned Value', l: 'Earned Value Cost (SAR)', h: 'EV SAR', w: 92, k: 'n', a: a => [nf(a.wt * a.p / 100 * X.k)], w_: g => [nf(g.ev * X.k)] },
+    { id: 'pv', g: 'Earned Value', l: 'Planned Value Cost (SAR)', h: 'PV SAR', w: 92, k: 'n', a: a => [nf(a.wt * (a.bs === null ? 0 : X.pf(a, X.dd)) * X.k)], w_: g => [nf(g.pv * X.k)] },
+    { id: 'sv', g: 'Earned Value', l: 'Schedule Variance (EV − PV, SAR)', h: 'SV SAR', w: 92, k: 'n', a: a => { const v = a.wt * (a.p / 100 - (a.bs === null ? 0 : X.pf(a, X.dd))) * X.k; return [nf(v), v < -0.5 ? 'neg' : v > 0.5 ? 'pos' : '']; }, w_: g => { const v = (g.ev - g.pv) * X.k; return [nf(v), v < 0 ? 'neg' : 'pos']; } },
+    { id: 'spi', g: 'Earned Value', l: 'Schedule Performance Index (EV / PV)', h: 'SPI', w: 50, k: 'n', a: a => { const pv = a.bs === null ? 0 : X.pf(a, X.dd); return pv ? [(a.p / 100 / pv).toFixed(2), a.p / 100 / pv < 1 ? 'neg' : 'pos'] : ['—']; }, w_: g => g.pv ? [(g.ev / g.pv).toFixed(2), g.ev / g.pv < 1 ? 'neg' : 'pos'] : ['—'] },
+    { id: 'blu', g: 'Units', l: 'Budgeted Labor Units (h)', h: 'Bud. Lab h', w: 84, k: 'n', a: a => { const o = labUnits()[a.c]; return [o ? nf(o.b) : '—']; }, w_: g => [nf(g.blu)] },
+    { id: 'rlu', g: 'Units', l: 'Remaining Labor Units (h, as in the XER)', h: 'Rem. Lab h', w: 84, k: 'n', a: a => { const o = labUnits()[a.c]; return [o ? nf(o.r) : '—']; }, w_: g => [nf(g.rlu)] },
+    { id: 'nact', g: 'Number of Activities', l: 'Number of Activities', h: 'No. Act.', w: 62, k: 'n', a: () => [''], w_: g => [nf(g.n)] },
+    { id: 'ndone', g: 'Number of Activities', l: 'Number of Completed Activities', h: 'Done', w: 52, k: 'n', a: () => [''], w_: g => [nf(g.done)] },
+    { id: 'nact2', g: 'Number of Activities', l: 'Number of In Progress Activities', h: 'In Prog.', w: 58, k: 'n', a: () => [''], w_: g => [nf(g.act)] }
+  ];
+  const COLMAP = {}; COLS.forEach(c => { COLMAP[c.id] = c; });
+  const DEFAULT_COLS = ['id', 'name', 'start', 'finish', 'delay', 'pp', 'tf'];
+  const BL_COLS = ['id', 'name', 'od', 'bs', 'bf', 'start', 'finish', 'svar', 'fvar', 'sp', 'pp', 'btc', 'tf'];
+  let GCOLS = (() => { try { const v = JSON.parse(localStorage.getItem('trd_gcols') || 'null'); return Array.isArray(v) && v.length ? v.filter(id => COLMAP[id]) : DEFAULT_COLS.slice(); } catch (e) { return DEFAULT_COLS.slice(); } })();
+  const saveCols = () => { try { localStorage.setItem('trd_gcols', JSON.stringify(GCOLS)); } catch (e) { } };
+  const TSK = 'trd_gts';
+  (() => { try { const v = JSON.parse(localStorage.getItem(TSK) || 'null'); if (v) Object.assign(F, { lines: v.lines || 'two', iv: v.iv || '', tsStart: v.tsStart || '', tsFinish: v.tsFinish || '' }); } catch (e) { } })();
+  const saveTs = () => { try { localStorage.setItem(TSK, JSON.stringify({ lines: F.lines, iv: F.iv, tsStart: F.tsStart, tsFinish: F.tsFinish })); } catch (e) { } };
+  let LW = 800;
   let lastRows = [];
+  let lastX = null;
   function drawGantt() {
     const list = filtered();
     lastRows = list;
@@ -487,13 +567,18 @@
       if (F.view === 'achieved') { t0 = Math.min(t0, win[0]); t1 = Math.max(t1, dd); }
       t0 -= 7 * DAY; t1 += 14 * DAY;
     }
-    // timescale start / finish chosen by the user
+    // timescale start / finish chosen by the user (dates, or PS / DD / PF like P6)
+    if (F.tsStart === 'PS' && isFinite(X.bStart)) t0 = Math.min(X.bStart, ...S.acts.map(a => a.s ?? Infinity).filter(isFinite));
+    if (F.tsStart === 'DD') t0 = dd - 7 * DAY;
+    if (F.tsFinish === 'PF') t1 = Math.max(X.fFinish || 0, X.bFinish || 0) + 14 * DAY;
     if (F.tsFrom && pd(F.tsFrom) !== null) t0 = pd(F.tsFrom);
     if (F.tsTo && pd(F.tsTo) !== null) t1 = pd(F.tsTo) + DAY;
     if (t1 <= t0) t1 = t0 + 7 * DAY;
     if (!F.tsFrom) { t0 = new Date(t0); t0 = Date.UTC(t0.getUTCFullYear(), t0.getUTCMonth(), t0.getUTCDate() - ((t0.getUTCDay() + 6) % 7)); } // Monday
     const box0 = $('#gantt');
-    if (F.fit && box0) { const avail = Math.max(300, box0.clientWidth - 800 - 50); F.scale = Math.max(0.05, avail / ((t1 - t0) / DAY) / PX[F.zoom]); F.fit = false; }
+    LW = 8 + GCOLS.reduce((s_, id) => s_ + COLMAP[id].w, 0);
+    if (F.iv) F.zoom = lowUnit(F.iv) || F.zoom;
+    if (F.fit && box0) { const avail = Math.max(300, box0.clientWidth - LW - 50); F.scale = Math.max(0.05, avail / ((t1 - t0) / DAY) / PX[F.zoom]); F.fit = false; }
     const px = PX[F.zoom] * F.scale;
     const W = Math.ceil((t1 - t0) / DAY * px) + 40;
     const x = t => (t - t0) / DAY * px;
@@ -508,16 +593,20 @@
     const monthB = [monthStart, u => addMonths(u, 1), mName];
     const qB = [qStart, u => addMonths(u, 3), u => 'Q' + (Math.floor(new Date(u).getUTCMonth() / 3) + 1) + ' ' + String(new Date(u).getUTCFullYear()).slice(2)];
     const yB = [yearStart, u => Date.UTC(new Date(u).getUTCFullYear() + 1, 0, 1), u => String(new Date(u).getUTCFullYear())];
-    const L = { day: [monthB, dayB], week: [monthB, weekB], month: [yB, monthB], quarter: [yB, qB], year: [yB, yB] }[F.zoom];
-    const [hdTop] = band(L[0][0], L[0][1], L[0][2], '');
-    let [hdBot, grid] = band(L[1][0], L[1][1], L[1][2], 'sm');
-    if (F.zoom === 'year') hdBot = '';
+    const UB = { Day: dayB, Week: weekB, Month: monthB, Quarter: qB, Year: yB };
+    const iv = (F.iv || ZOOM_IV[F.zoom]).split('/');
+    const bands = iv.map((u, i) => band(UB[u][0], UB[u][1], UB[u][2], i === iv.length - 1 && iv.length > 1 ? 'sm' : ''));
+    const grid = bands[bands.length - 1][1];
+    const hdRows = bands.map(b => `<div class="g-hrow">${b[0]}</div>`).join('');
 
     // rows (grouped by WBS)
     const LIMIT = 2500;
     const rows = [];
+    const cols = GCOLS.map(id => COLMAP[id]);
+    let lead = 0; while (lead < cols.length && cols[lead].k === 't') lead++; if (!lead) lead = 1;
+    const leadW = cols.slice(0, lead).reduce((s_, c) => s_ + c.w, 0);
+    const cell = (c, v, i, depth) => `<span class="gc ${c.k} ${v[1] || ''}" style="width:${c.w}px${i === 0 ? `;padding-left:${4 + depth * 12}px` : ''}" title="${esc(v[0])}">${esc(v[0])}</span>`;
     const actRow = (a, depth) => {
-      const fv = finVar(a);
       const cls = isDone(a) ? 'done' : critical(a) ? 'crit' : isActive(a) ? 'act' : 'ns';
       let bars = '';
       if (a.bs !== null && a.bf !== null) bars += `<div class="g-bl" style="left:${x(a.bs)}px;width:${Math.max(2, x(a.bf + DAY) - x(a.bs))}px"></div>`;
@@ -526,16 +615,14 @@
         else {
           const w = Math.max(3, x(a.f + DAY) - x(a.s));
           bars += `<div class="g-bar ${cls}" style="left:${x(a.s)}px;width:${w}px"><i style="width:${a.p}%"></i></div>`;
-          if (w > 40 || F.zoom === 'week') bars += `<span class="g-lbl" style="left:${x(a.f + DAY) + 4}px">${a.p ? Math.round(a.p) + '%' : ''}</span>`;
+          if (w > 40 || F.zoom === 'week' || F.zoom === 'day') bars += `<span class="g-lbl" style="left:${x(a.f + DAY) + 4}px">${a.p ? Math.round(a.p) + '%' : ''}</span>`;
         }
       }
-      return `<div class="g-row click" data-act="${esc(a.c)}"><div class="g-left" style="--d:${depth}">
-        <span class="c-id">${esc(a.c)}</span><span class="c-nm" title="${esc(a.n)}">${esc(a.n)}</span>
-        <span class="c-dt">${fd(a.s)}</span><span class="c-dt">${fd(a.f)}</span>
-        <span class="c-n ${fv > 0 ? 'neg' : fv < 0 ? 'pos' : ''}">${fv === null ? '—' : (fv > 0 ? '+' : '') + fv}</span>
-        <span class="c-n">${Math.round(a.p)}%</span><span class="c-n ${a.tf !== null && a.tf < 0 ? 'neg' : ''}">${a.tf === null || isDone(a) ? '—' : Math.round(a.tf)}</span></div>
+      return `<div class="g-row click" data-act="${esc(a.c)}"><div class="g-left">${cols.map((c, i) => cell(c, c.a(a), i, depth)).join('')}</div>
         <div class="g-tl" style="width:${W}px">${bars}</div></div>`;
     };
+    const wbsCells = (w, g, col) => `<span class="gc t gw" style="width:${leadW}px;padding-left:${2 + w.depth * 12}px" title="${esc(w.code + ' ' + w.name)} — ${g.n.toLocaleString()} activities, ${g.done.toLocaleString()} completed"><span class="c-tg">${col ? '▸' : '▾'}</span><b>${esc(w.code)}</b>&nbsp;${esc(w.name)} <em class="c-cnt">${g.n.toLocaleString()}</em></span>`
+      + cols.slice(lead).map(c => cell(c, c.w_ ? c.w_(g) : [''], -1, 0)).join('');
     if (F.group) {
       const byW = {};
       list.forEach(a => { (byW[a.w] = byW[a.w] || []).push(a); });
@@ -543,23 +630,20 @@
       const need = new Set();
       Object.keys(byW).forEach(id => X.wbsPath(id).forEach(w => need.add(w.id)));
       const hiddenUnder = id => X.wbsPath(id).slice(0, -1).some(w => F.collapsed.has(w.id));
-      const agg = {};
+      const agg = {}, needLab = GCOLS.includes('blu') || GCOLS.includes('rlu');
       list.forEach(a => X.wbsPath(a.w).forEach(w => {
-        const g = agg[w.id] || (agg[w.id] = { s: Infinity, f: -Infinity, bf: -Infinity, tf: Infinity, n: 0, done: 0, wt: 0, ev: 0 });
-        if (a.s !== null) g.s = Math.min(g.s, a.s); if (a.f !== null) g.f = Math.max(g.f, a.f); if (a.bf !== null) g.bf = Math.max(g.bf, a.bf);
+        const g = agg[w.id] || (agg[w.id] = { s: Infinity, f: -Infinity, as: Infinity, af: -Infinity, bs: Infinity, bf: -Infinity, tf: Infinity, n: 0, done: 0, act: 0, wt: 0, ev: 0, pv: 0, blu: 0, rlu: 0 });
+        if (a.s !== null) g.s = Math.min(g.s, a.s); if (a.f !== null) g.f = Math.max(g.f, a.f); if (a.bf !== null) g.bf = Math.max(g.bf, a.bf); if (a.bs !== null) g.bs = Math.min(g.bs, a.bs);
+        if (a.as !== null) g.as = Math.min(g.as, a.as); if (a.af !== null) g.af = Math.max(g.af, a.af);
         if (!isDone(a) && a.tf !== null) g.tf = Math.min(g.tf, a.tf);
-        g.n++; if (isDone(a)) g.done++; g.wt += a.wt; g.ev += a.wt * a.p / 100;
+        g.n++; if (isDone(a)) g.done++; else if (a.as !== null) g.act++; g.wt += a.wt; g.ev += a.wt * a.p / 100; if (a.wt && a.bs !== null) g.pv += a.wt * X.pf(a, dd);
+        if (needLab) { const o = labUnits()[a.c]; if (o) { g.blu += o.b; g.rlu += o.r; } }
       }));
       for (const w of S.wbs) {
         if (!need.has(w.id) || hiddenUnder(w.id)) continue;
         const g = agg[w.id];
         const col = F.collapsed.has(w.id);
-        rows.push(`<div class="g-row g-wbs d${Math.min(w.depth, 4)}" data-wbs="${esc(w.id)}"><div class="g-left" style="--d:${w.depth}">
-          <span class="c-tg">${col ? '▸' : '▾'}</span><span class="c-wbs" title="${esc(w.code + ' ' + w.name)} — ${g.n.toLocaleString()} activities, ${g.done.toLocaleString()} completed"><b>${esc(w.code)}</b> ${esc(w.name)} <em class="c-cnt">${g.n.toLocaleString()}</em></span>
-          <span class="c-dt">${isFinite(g.s) ? fd(g.s) : '—'}</span><span class="c-dt">${isFinite(g.f) ? fd(g.f) : '—'}</span>
-          ${(() => { const v = isFinite(g.f) && isFinite(g.bf) ? Math.round((g.f - g.bf) / DAY) : null; return `<span class="c-n ${v > 0 ? 'neg' : v < 0 ? 'pos' : ''}" title="Finish variance vs baseline (days)">${v === null ? '—' : (v > 0 ? '+' : '') + v}</span>`; })()}
-          <span class="c-n" title="Cost-weighted % complete">${g.wt ? (g.ev / g.wt * 100).toFixed(g.ev / g.wt * 100 < 10 ? 1 : 0) + '%' : g.n ? Math.round(g.done / g.n * 100) + '%' : '—'}</span>
-          <span class="c-n ${isFinite(g.tf) && g.tf < 0 ? 'neg' : ''}" title="Lowest total float of the open activities (days)">${isFinite(g.tf) ? Math.round(g.tf) : '—'}</span></div>
+        rows.push(`<div class="g-row g-wbs d${Math.min(w.depth, 4)}" data-wbs="${esc(w.id)}"><div class="g-left">${wbsCells(w, g, col)}</div>
           <div class="g-tl" style="width:${W}px">${isFinite(g.s) ? `<div class="g-sum" style="left:${x(g.s)}px;width:${Math.max(3, x(g.f + DAY) - x(g.s))}px"></div>` : ''}</div></div>`);
         if (!col) (byW[w.id] || []).sort((a, b) => (a.s ?? 0) - (b.s ?? 0)).forEach(a => { if (rows.length < LIMIT) rows.push(actRow(a, w.depth + 1)); });
         if (rows.length >= LIMIT) break;
@@ -568,21 +652,140 @@
     } else {
       [...list].sort((a, b) => (a.s ?? 0) - (b.s ?? 0)).slice(0, LIMIT).forEach(a => rows.push(actRow(a, 0)));
     }
-    box.innerHTML = `<div class="g-in" style="width:${W + 800}px">
-      <div class="g-head"><div class="g-left hd"><span class="c-id">Activity ID</span><span class="c-nm">Activity name</span><span class="c-dt">Start</span><span class="c-dt">Finish</span><span class="c-n" title="Finish variance vs baseline (days)">Var d</span><span class="c-n">%</span><span class="c-n" title="Total float (days)">TF</span></div>
-        <div class="g-tl hd" style="width:${W}px"><div class="g-hrow">${hdTop}</div><div class="g-hrow">${hdBot}</div></div></div>
+    const keep = F.keepScroll ? [box.scrollLeft, box.scrollTop] : null; F.keepScroll = false;
+    const wide = LW > box.clientWidth * 0.6; box.classList.toggle('g-wide', wide);
+    box.style.setProperty('--lw', LW + 'px'); box.style.setProperty('--hh', (bands.length * 22) + 'px');
+    box.innerHTML = `<div class="g-in" style="width:${W + LW}px">
+      <div class="g-head"><div class="g-left hd">${cols.map(c => `<span class="gc ${c.k}" style="width:${c.w}px" title="${esc(c.l)} — right-click for Columns…">${esc(c.h || c.l)}</span>`).join('')}</div>
+        <div class="g-tl hd" style="width:${W}px">${hdRows}</div></div>
       <div class="g-body"><div class="g-grid" style="width:${W}px">${grid}<b class="g-dd" style="left:${x(dd)}px" title="Data date ${fd(dd)}"></b>${win && F.view === 'lookahead' ? `<b class="g-win" style="left:${x(win[1] + DAY)}px"></b>` : ''}</div>${rows.join('')}</div></div>
       ${rows.length >= LIMIT ? `<div class="g-empty">Showing the first ${LIMIT} rows — narrow the filters (WBS / search) to see the rest.</div>` : ''}`;
-    // scroll so the data date is visible
-    box.scrollLeft = Math.max(0, x(dd) - 260);
+    // scroll so the data date is visible (or stay where the user was)
+    if (keep) { box.scrollLeft = keep[0]; box.scrollTop = keep[1]; } else box.scrollLeft = wide ? 0 : Math.max(0, x(dd) - 260);
+    lastX = { x, t0, px };
   }
 
   function exportCsv() {
-    const head = ['Activity ID', 'Activity Name', 'WBS Code', 'WBS Name', 'Status', 'BL Start', 'BL Finish', 'Start', 'Finish', 'Actual Start', 'Actual Finish', 'Finish Var (d)', '% Complete', 'Total Float (d)', 'Value (SAR)'];
+    const cols = GCOLS.map(id => COLMAP[id]).filter(c => c.id !== 'nact' && c.id !== 'ndone' && c.id !== 'nact2');
     const q = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
-    const lines = [head.map(q).join(',')].concat(lastRows.map(a => [a.c, a.n, X.W[a.w]?.code, X.W[a.w]?.name, a.st, ds(a.bs), ds(a.bf), ds(a.s), ds(a.f), ds(a.as), ds(a.af), finVar(a), a.p, a.tf, Math.round(a.wt * X.k)].map(q).join(',')));
+    const lines = [cols.map(c => q(c.l)).join(',')].concat(lastRows.map(a => cols.map(c => { const v = c.a(a)[0]; return q(v === '—' ? '' : v); }).join(',')));
     const blob = new Blob(['﻿' + lines.join('\n')], { type: 'text/csv' });
     const l = document.createElement('a'); l.href = URL.createObjectURL(blob); l.download = `activities-${F.view}.csv`; l.click();
+  }
+
+  // ---------------- P6-style dialogs: Columns and Timescale ----------------
+  function dialog(title, body, onApply, extra) {
+    $$('.p6dlg-back').forEach(x => x.remove());
+    const back = document.createElement('div');
+    back.className = 'p6dlg-back';
+    back.innerHTML = `<div class="p6dlg" role="dialog" aria-label="${esc(title)}"><div class="p6dlg-h"><b>${esc(title)}</b><button class="p6x" data-k="cancel" title="Close">✕</button></div>
+      <div class="p6dlg-b">${body}</div>
+      <div class="p6dlg-f">${extra || ''}<span style="flex:1"></span><button class="btn" data-k="ok">OK</button><button class="btn ghost" data-k="cancel">Cancel</button><button class="btn ghost" data-k="apply">Apply</button></div></div>`;
+    document.body.appendChild(back);
+    const close = () => { back.remove(); document.removeEventListener('keydown', key); };
+    const key = e => { if (e.key === 'Escape') close(); };
+    document.addEventListener('keydown', key);
+    back.addEventListener('mousedown', e => { if (e.target === back) close(); });
+    back.querySelector('.p6dlg-f').addEventListener('click', e => {
+      const k = e.target.closest('button')?.dataset.k; if (!k) return;
+      if (k === 'ok') { onApply(); close(); } else if (k === 'apply') onApply();
+    });
+    back.querySelector('.p6x').onclick = close;
+    return back.querySelector('.p6dlg');
+  }
+  const redrawKeep = () => { F.keepScroll = true; drawGantt(); syncFilters(); };
+
+  function colDialog() {
+    let sel = GCOLS.slice(), pickA = new Set(), pickS = new Set();
+    const groups = [...new Set(COLS.map(c => c.g))].sort();
+    const open = new Set(groups);
+    const d = dialog('Columns', `<div class="p6cols">
+        <div class="p6pane"><div class="p6lbl">Available Options</div><div class="p6list" id="p6Av"></div></div>
+        <div class="p6mid"><button data-m="add" title="Add the highlighted columns">▶</button><button data-m="addAll" title="Add all columns">▶▶</button><button data-m="rem" title="Remove the highlighted columns">◀</button><button data-m="remAll" title="Remove all (keeps Activity ID)">◀◀</button></div>
+        <div class="p6pane"><div class="p6lbl">Selected Options</div><div class="p6list" id="p6Sel"></div></div>
+        <div class="p6mid"><button data-m="up" title="Move up">▲</button><button data-m="down" title="Move down">▼</button></div>
+      </div>
+      <div class="p6pre"><span class="muted small">Quick sets:</span><button class="btn ghost" data-pre="bl">Baseline vs Update</button><button class="btn ghost" data-pre="ev">Earned Value</button><button class="btn ghost" data-pre="def">Dashboard default</button></div>
+      <p class="muted small" style="margin:6px 2px 0">Double-click to move a column · WBS rows show totals (dates, cost, EV, counts) for the columns that have them.</p>`,
+      () => { GCOLS = sel.length ? sel.slice() : DEFAULT_COLS.slice(); saveCols(); redrawKeep(); },
+      `<button class="btn ghost" data-k="def">Default</button>`);
+    const PRE = { bl: BL_COLS, ev: ['id', 'name', 'bs', 'bf', 'start', 'finish', 'btc', 'pv', 'ev', 'sv', 'spi', 'sp', 'pp'], def: DEFAULT_COLS };
+    const paint = () => {
+      d.querySelector('#p6Av').innerHTML = groups.map(g => {
+        const cs = COLS.filter(c => c.g === g && !sel.includes(c.id));
+        return `<div class="p6g ${open.has(g) ? 'open' : ''}" data-g="${esc(g)}"><span>${open.has(g) ? '▾' : '▸'}</span> ${esc(g)} <em>${cs.length}</em></div>` +
+          (open.has(g) ? cs.map(c => `<div class="p6it ${pickA.has(c.id) ? 'on' : ''}" data-id="${c.id}">${esc(c.l)}</div>`).join('') : '');
+      }).join('');
+      d.querySelector('#p6Sel').innerHTML = sel.map(id => `<div class="p6it ${pickS.has(id) ? 'on' : ''}" data-id="${id}">${esc(COLMAP[id].l)}</div>`).join('');
+    };
+    const pick = (set, id, e) => { if (e.ctrlKey || e.metaKey) set.has(id) ? set.delete(id) : set.add(id); else { set.clear(); set.add(id); } };
+    d.querySelector('#p6Av').onclick = e => { const g = e.target.closest('.p6g'); if (g) { open.has(g.dataset.g) ? open.delete(g.dataset.g) : open.add(g.dataset.g); return paint(); } const it = e.target.closest('.p6it'); if (it) { pick(pickA, it.dataset.id, e); pickS.clear(); paint(); } };
+    d.querySelector('#p6Sel').onclick = e => { const it = e.target.closest('.p6it'); if (it) { pick(pickS, it.dataset.id, e); pickA.clear(); paint(); } };
+    d.querySelector('#p6Av').ondblclick = e => { const it = e.target.closest('.p6it'); if (it) { sel.push(it.dataset.id); pickA.clear(); paint(); } };
+    d.querySelector('#p6Sel').ondblclick = e => { const it = e.target.closest('.p6it'); if (it && sel.length > 1) { sel = sel.filter(x => x !== it.dataset.id); pickS.clear(); paint(); } };
+    d.addEventListener('click', e => {
+      const b = e.target.closest('button'); if (!b) return;
+      const m = b.dataset.m, pre = b.dataset.pre;
+      if (pre) { sel = PRE[pre].slice(); pickA.clear(); pickS.clear(); }
+      else if (b.dataset.k === 'def') { sel = DEFAULT_COLS.slice(); pickA.clear(); pickS.clear(); }
+      else if (m === 'add') { COLS.forEach(c => { if (pickA.has(c.id) && !sel.includes(c.id)) sel.push(c.id); }); pickS = new Set(pickA); pickA.clear(); }
+      else if (m === 'addAll') { COLS.forEach(c => { if (!sel.includes(c.id)) sel.push(c.id); }); }
+      else if (m === 'rem') { sel = sel.filter(id => !pickS.has(id)); if (!sel.length) sel = ['id']; pickA = new Set(pickS); pickS.clear(); }
+      else if (m === 'remAll') { sel = ['id']; pickS.clear(); }
+      else if (m === 'up' || m === 'down') {
+        const ix = sel.map((id, i) => pickS.has(id) ? i : -1).filter(i => i >= 0);
+        if (m === 'down') ix.reverse();
+        ix.forEach(i => { const j = m === 'up' ? i - 1 : i + 1; if (j < 0 || j >= sel.length || pickS.has(sel[j])) return; [sel[i], sel[j]] = [sel[j], sel[i]]; });
+      } else return;
+      paint();
+    });
+    paint();
+  }
+
+  function tsDialog() {
+    const st = { lines: F.lines || 'two', iv: F.iv || ZOOM_IV[F.zoom], start: F.tsFrom ? 'date' : F.tsStart || 'auto', from: F.tsFrom, fin: F.tsTo ? 'date' : F.tsFinish || 'auto', to: F.tsTo, scale: F.scale };
+    if (!INTERVALS[st.lines].includes(st.iv)) st.iv = st.lines === 'three' ? 'Month/Week/Day' : st.iv.split('/').length === 1 ? 'Year/Quarter' : 'Month/Week';
+    const d = dialog('Timescale', `<div class="p6ts">
+        <fieldset><legend>Timescale lines</legend><label><input type="radio" name="tsl" value="two"> Two Lines</label><label><input type="radio" name="tsl" value="three"> Three Lines</label></fieldset>
+        <fieldset><legend>Timescale Start</legend><select id="tsS"><option value="auto">Auto (from the activities shown)</option><option value="PS">PS — Project Start</option><option value="DD">DD — Data Date (1 week before)</option><option value="date">Custom date…</option></select><input type="date" id="tsSd"></fieldset>
+        <fieldset><legend>Timescale Finish</legend><select id="tsF"><option value="auto">Auto (to the activities shown)</option><option value="PF">PF — Project Finish</option><option value="date">Custom date…</option></select><input type="date" id="tsFd"></fieldset>
+        <fieldset><legend>Date Format</legend><label class="p6row">Type <select disabled><option>Calendar</option></select></label><label class="p6row">Date Interval <select id="tsIv"></select></label></fieldset>
+        <fieldset><legend>Zoom</legend><div class="seg"><button data-z="out" title="Zoom out">−</button><button id="tsPct" disabled></button><button data-z="in" title="Zoom in">＋</button></div><button class="btn ghost" data-z="fit">⇔ Fit to window</button><button class="btn ghost" data-z="100">100%</button>
+          <p class="muted small">Tip: Ctrl + mouse wheel on the chart zooms in and out.</p></fieldset></div>`,
+      () => {
+        F.lines = st.lines; F.iv = st.iv; F.zoom = lowUnit(st.iv) || F.zoom; F.scale = st.scale;
+        F.tsStart = st.start === 'PS' || st.start === 'DD' ? st.start : ''; F.tsFrom = st.start === 'date' ? st.from || '' : '';
+        F.tsFinish = st.fin === 'PF' ? 'PF' : ''; F.tsTo = st.fin === 'date' ? st.to || '' : '';
+        if (st.fit) { F.fit = true; st.fit = false; }
+        saveTs(); syncFilters(); drawGantt(); st.scale = F.scale; paint();
+      }, `<button class="btn ghost" data-k="tsdef">Default</button>`);
+    const paint = () => {
+      d.querySelectorAll('input[name=tsl]').forEach(r => { r.checked = r.value === st.lines; });
+      d.querySelector('#tsIv').innerHTML = INTERVALS[st.lines].map(v => `<option ${v === st.iv ? 'selected' : ''}>${v}</option>`).join('');
+      d.querySelector('#tsS').value = st.start; d.querySelector('#tsSd').value = st.from || ''; d.querySelector('#tsSd').style.display = st.start === 'date' ? '' : 'none';
+      d.querySelector('#tsF').value = st.fin; d.querySelector('#tsFd').value = st.to || ''; d.querySelector('#tsFd').style.display = st.fin === 'date' ? '' : 'none';
+      d.querySelector('#tsPct').textContent = st.fit ? 'Fit' : Math.round(st.scale * 100) + '%';
+    };
+    d.addEventListener('change', e => {
+      const t = e.target;
+      if (t.name === 'tsl') { st.lines = t.value; if (!INTERVALS[st.lines].includes(st.iv)) st.iv = st.lines === 'three' ? 'Month/Week/Day' : 'Month/Week'; }
+      else if (t.id === 'tsIv') st.iv = t.value;
+      else if (t.id === 'tsS') st.start = t.value; else if (t.id === 'tsSd') st.from = t.value;
+      else if (t.id === 'tsF') st.fin = t.value; else if (t.id === 'tsFd') st.to = t.value;
+      paint();
+    });
+    d.addEventListener('click', e => {
+      const b = e.target.closest('button'); if (!b) return;
+      const z = b.dataset.z;
+      if (z === 'in') { st.scale = Math.min(4, +(st.scale * 1.25).toFixed(3)); st.fit = false; }
+      else if (z === 'out') { st.scale = Math.max(0.05, +(st.scale / 1.25).toFixed(3)); st.fit = false; }
+      else if (z === 'fit') st.fit = true;
+      else if (z === '100') { st.scale = 1; st.fit = false; }
+      else if (b.dataset.k === 'tsdef') Object.assign(st, { lines: 'two', iv: 'Month/Week', start: 'auto', from: '', fin: 'auto', to: '', scale: 1, fit: false });
+      else return;
+      paint();
+    });
+    paint();
   }
 
   // ---------------- details ----------------
@@ -1002,11 +1205,16 @@
     items.push(['expandAll', 'Expand all', () => F.collapsed.clear()]);
     items.push(['collapseAll', 'Collapse all', () => { S.wbs.forEach(x => F.collapsed.add(x.id)); }]);
     items.push(['levels', 'Show WBS levels', null, Array.from({ length: Math.min(6, maxD + 1) }, (_, i) => i + 1)]);
+    items.push(['sep']);
+    items.push(['cols', 'Columns…', () => colDialog()]);
+    items.push(['ts', 'Timescale…', () => tsDialog()]);
+    items.push(['zin', 'Zoom in', () => ZOOM(() => { F.scale = Math.min(4, +(F.scale * 1.25).toFixed(3)); })]);
+    items.push(['zout', 'Zoom out', () => ZOOM(() => { F.scale = Math.max(0.05, +(F.scale / 1.25).toFixed(3)); })]);
     const m = document.createElement('div');
     m.className = 'ctx-menu';
     m.innerHTML = items.map((it, i) => it[0] === 'sep' ? '<hr>' : it[0] === 'head' ? `<div class="ctx-h" title="${esc(it[1])}">${esc(it[1])}</div>`
       : it[0] === 'levels' ? `<div class="ctx-lv"><span>${it[1]}</span>${it[3].map(n => `<button data-lv="${n}" title="Expand to level ${n}">${n}</button>`).join('')}</div>`
-      : `<button data-i="${i}"><i>${{ collapse: '▸', expand: '▾', expandAll: '⊞', collapseAll: '⊟', up: '⤴', info: 'ⓘ', act: '▤' }[it[0]] || ''}</i>${esc(it[1])}</button>`).join('');
+      : `<button data-i="${i}"><i>${{ collapse: '▸', expand: '▾', expandAll: '⊞', collapseAll: '⊟', up: '⤴', info: 'ⓘ', act: '▤', cols: '▥', ts: '◷', zin: '＋', zout: '−' }[it[0]] || ''}</i>${esc(it[1])}</button>`).join('');
     document.body.appendChild(m);
     const r = m.getBoundingClientRect();
     m.style.left = Math.max(4, Math.min(e.clientX, innerWidth - r.width - 6)) + 'px';
@@ -1016,12 +1224,18 @@
       const b = ev.target.closest('button'); if (!b) return;
       ev.stopPropagation();
       if (b.dataset.lv) { const n = +b.dataset.lv; F.collapsed.clear(); S.wbs.forEach(x => { if (x.depth >= n - 1) F.collapsed.add(x.id); }); }
-      else { const it = items[+b.dataset.i]; if (it && it[2]) { it[2](); if (it[0] === 'info' || it[0] === 'act') { closeMenu(); return; } } }
+      else { const it = items[+b.dataset.i]; if (it && it[2]) { it[2](); if (['info', 'act', 'cols', 'ts', 'zin', 'zout'].includes(it[0])) { closeMenu(); return; } } }
       closeMenu(); redraw();
     };
   }
   function closeMenu() { $$('.ctx-menu').forEach(x => x.remove()); }
   document.addEventListener('contextmenu', ganttMenu);
+  document.addEventListener('wheel', e => {
+    if (!(e.ctrlKey || e.metaKey) || !ZOOM) return;
+    const box = $('#gantt'); if (!box || !box.contains(e.target)) return;
+    e.preventDefault();
+    ZOOM(() => { F.scale = e.deltaY < 0 ? Math.min(4, +(F.scale * 1.15).toFixed(3)) : Math.max(0.05, +(F.scale / 1.15).toFixed(3)); });
+  }, { passive: false });
   document.addEventListener('click', e => { if (!e.target.closest('.ctx-menu')) closeMenu(); }, true);
   document.addEventListener('keydown', e => { if (e.key === 'Escape') closeMenu(); });
   window.addEventListener('scroll', closeMenu, true);
