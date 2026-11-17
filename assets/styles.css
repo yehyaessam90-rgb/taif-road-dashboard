@@ -676,3 +676,14 @@ body.printing main { padding: 0; }
 .cut-weeks { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin: 0 0 12px; } .cut-weeks .chip { cursor: pointer; }
 .sop-acts { display: inline-block; margin-top: 3px; font: inherit; font-size: 12px; font-weight: 600; color: var(--brand); background: color-mix(in srgb, var(--brand) 8%, transparent); border: 1px solid color-mix(in srgb, var(--brand) 30%, var(--border)); border-radius: 99px; padding: 1px 9px; cursor: pointer; white-space: nowrap; }
 .sop-acts:hover { background: color-mix(in srgb, var(--brand) 16%, transparent); }
+
+/* right-click menu (Gantt) */
+.ctx-menu { position: fixed; z-index: 90; min-width: 230px; max-width: 340px; padding: 6px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 10px 30px rgba(0,0,0,.22); font-size: 13.5px; }
+.ctx-menu button { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; font: inherit; color: var(--text); background: none; border: 0; border-radius: 6px; padding: 7px 10px; cursor: pointer; }
+.ctx-menu button:hover { background: color-mix(in srgb, var(--brand) 12%, transparent); }
+.ctx-menu button i { font-style: normal; width: 16px; text-align: center; color: var(--muted); }
+.ctx-menu hr { border: 0; border-top: 1px solid var(--border); margin: 5px 2px; }
+.ctx-h { font-size: 12px; font-weight: 700; color: var(--brand); padding: 5px 10px 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ctx-lv { display: flex; align-items: center; gap: 4px; padding: 5px 10px; color: var(--text-2); }
+.ctx-lv span { flex: 1; }
+.ctx-lv button { width: 26px; justify-content: center; padding: 4px 0; border: 1px solid var(--border); }

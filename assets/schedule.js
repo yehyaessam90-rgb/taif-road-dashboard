@@ -956,6 +956,55 @@
     };
   }
 
+  // ---------------- right-click menu on the Gantt: collapse / expand WBS (P6 style) ----------------
+  function ganttMenu(e) {
+    const box = $('#gantt');
+    if (!box || !box.contains(e.target) || !S) return;
+    e.preventDefault();
+    closeMenu();
+    const wr = e.target.closest('.g-wbs[data-wbs]'), ar = e.target.closest('.g-row[data-act]');
+    const id = wr ? wr.dataset.wbs : ar && X.A[ar.dataset.act] ? X.A[ar.dataset.act].w : null;
+    const w = id ? X.W[id] : null;
+    const maxD = Math.max(...S.wbs.map(x => x.depth));
+    const items = [];
+    if (w) {
+      const col = F.collapsed.has(id);
+      items.push(['head', `${w.code} ${w.name}`]);
+      if (ar) items.push(['act', 'Activity details', () => A.Details.open(() => actDetail(ar.dataset.act))]);
+      items.push([col ? 'expand' : 'collapse', col ? 'Expand' : (ar ? 'Collapse its WBS' : 'Collapse'), () => { col ? F.collapsed.delete(id) : F.collapsed.add(id); }]);
+      items.push(['expandAll', 'Expand all below', () => { wbsSet(id).forEach(x => F.collapsed.delete(x)); }]);
+      items.push(['collapseAll', 'Collapse all below', () => { wbsSet(id).forEach(x => { if (x !== id) F.collapsed.add(x); }); F.collapsed.delete(id); }]);
+      if (w.parent && X.W[w.parent]) items.push(['up', 'Collapse the parent WBS', () => { F.collapsed.add(w.parent); }]);
+      items.push(['info', 'WBS details', () => A.Details.open(() => wbsDetail(id))]);
+      items.push(['sep']);
+    }
+    items.push(['expandAll', 'Expand all', () => F.collapsed.clear()]);
+    items.push(['collapseAll', 'Collapse all', () => { S.wbs.forEach(x => F.collapsed.add(x.id)); }]);
+    items.push(['levels', 'Show WBS levels', null, Array.from({ length: Math.min(6, maxD + 1) }, (_, i) => i + 1)]);
+    const m = document.createElement('div');
+    m.className = 'ctx-menu';
+    m.innerHTML = items.map((it, i) => it[0] === 'sep' ? '<hr>' : it[0] === 'head' ? `<div class="ctx-h" title="${esc(it[1])}">${esc(it[1])}</div>`
+      : it[0] === 'levels' ? `<div class="ctx-lv"><span>${it[1]}</span>${it[3].map(n => `<button data-lv="${n}" title="Expand to level ${n}">${n}</button>`).join('')}</div>`
+      : `<button data-i="${i}"><i>${{ collapse: '▸', expand: '▾', expandAll: '⊞', collapseAll: '⊟', up: '⤴', info: 'ⓘ', act: '▤' }[it[0]] || ''}</i>${esc(it[1])}</button>`).join('');
+    document.body.appendChild(m);
+    const r = m.getBoundingClientRect();
+    m.style.left = Math.max(4, Math.min(e.clientX, innerWidth - r.width - 6)) + 'px';
+    m.style.top = Math.max(4, Math.min(e.clientY, innerHeight - r.height - 6)) + 'px';
+    const redraw = () => { const top = box.scrollTop, left = box.scrollLeft; drawGantt(); box.scrollTop = top; box.scrollLeft = left; };
+    m.onclick = ev => {
+      const b = ev.target.closest('button'); if (!b) return;
+      ev.stopPropagation();
+      if (b.dataset.lv) { const n = +b.dataset.lv; F.collapsed.clear(); S.wbs.forEach(x => { if (x.depth >= n - 1) F.collapsed.add(x.id); }); }
+      else { const it = items[+b.dataset.i]; if (it && it[2]) { it[2](); if (it[0] === 'info' || it[0] === 'act') { closeMenu(); return; } } }
+      closeMenu(); redraw();
+    };
+  }
+  function closeMenu() { $$('.ctx-menu').forEach(x => x.remove()); }
+  document.addEventListener('contextmenu', ganttMenu);
+  document.addEventListener('click', e => { if (!e.target.closest('.ctx-menu')) closeMenu(); }, true);
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') closeMenu(); });
+  window.addEventListener('scroll', closeMenu, true);
+
   // ---------------- clicks ----------------
   document.addEventListener('click', e => {
     const a = e.target.closest('[data-act]');
