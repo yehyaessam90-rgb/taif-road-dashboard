@@ -545,17 +545,21 @@
       const hiddenUnder = id => X.wbsPath(id).slice(0, -1).some(w => F.collapsed.has(w.id));
       const agg = {};
       list.forEach(a => X.wbsPath(a.w).forEach(w => {
-        const g = agg[w.id] || (agg[w.id] = { s: Infinity, f: -Infinity, n: 0, wt: 0, ev: 0 });
-        if (a.s !== null) g.s = Math.min(g.s, a.s); if (a.f !== null) g.f = Math.max(g.f, a.f);
-        g.n++; g.wt += a.wt; g.ev += a.wt * a.p / 100;
+        const g = agg[w.id] || (agg[w.id] = { s: Infinity, f: -Infinity, bf: -Infinity, tf: Infinity, n: 0, done: 0, wt: 0, ev: 0 });
+        if (a.s !== null) g.s = Math.min(g.s, a.s); if (a.f !== null) g.f = Math.max(g.f, a.f); if (a.bf !== null) g.bf = Math.max(g.bf, a.bf);
+        if (!isDone(a) && a.tf !== null) g.tf = Math.min(g.tf, a.tf);
+        g.n++; if (isDone(a)) g.done++; g.wt += a.wt; g.ev += a.wt * a.p / 100;
       }));
       for (const w of S.wbs) {
         if (!need.has(w.id) || hiddenUnder(w.id)) continue;
         const g = agg[w.id];
         const col = F.collapsed.has(w.id);
         rows.push(`<div class="g-row g-wbs d${Math.min(w.depth, 4)}" data-wbs="${esc(w.id)}"><div class="g-left" style="--d:${w.depth}">
-          <span class="c-tg">${col ? '▸' : '▾'}</span><span class="c-wbs" title="${esc(w.code + ' ' + w.name)}"><b>${esc(w.code)}</b> ${esc(w.name)}</span>
-          <span class="c-n">${g.n}</span><span class="c-n">${g.wt ? Math.round(g.ev / g.wt * 100) + '%' : ''}</span></div>
+          <span class="c-tg">${col ? '▸' : '▾'}</span><span class="c-wbs" title="${esc(w.code + ' ' + w.name)} — ${g.n.toLocaleString()} activities, ${g.done.toLocaleString()} completed"><b>${esc(w.code)}</b> ${esc(w.name)} <em class="c-cnt">${g.n.toLocaleString()}</em></span>
+          <span class="c-dt">${isFinite(g.s) ? fd(g.s) : '—'}</span><span class="c-dt">${isFinite(g.f) ? fd(g.f) : '—'}</span>
+          ${(() => { const v = isFinite(g.f) && isFinite(g.bf) ? Math.round((g.f - g.bf) / DAY) : null; return `<span class="c-n ${v > 0 ? 'neg' : v < 0 ? 'pos' : ''}" title="Finish variance vs baseline (days)">${v === null ? '—' : (v > 0 ? '+' : '') + v}</span>`; })()}
+          <span class="c-n" title="Cost-weighted % complete">${g.wt ? (g.ev / g.wt * 100).toFixed(g.ev / g.wt * 100 < 10 ? 1 : 0) + '%' : g.n ? Math.round(g.done / g.n * 100) + '%' : '—'}</span>
+          <span class="c-n ${isFinite(g.tf) && g.tf < 0 ? 'neg' : ''}" title="Lowest total float of the open activities (days)">${isFinite(g.tf) ? Math.round(g.tf) : '—'}</span></div>
           <div class="g-tl" style="width:${W}px">${isFinite(g.s) ? `<div class="g-sum" style="left:${x(g.s)}px;width:${Math.max(3, x(g.f + DAY) - x(g.s))}px"></div>` : ''}</div></div>`);
         if (!col) (byW[w.id] || []).sort((a, b) => (a.s ?? 0) - (b.s ?? 0)).forEach(a => { if (rows.length < LIMIT) rows.push(actRow(a, w.depth + 1)); });
         if (rows.length >= LIMIT) break;

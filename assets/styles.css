@@ -242,7 +242,7 @@ body.fs .gantt { max-height: 80vh; }
 .g-left span { padding: 0 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .c-id { width: 165px; flex: none; font-weight: 600; }
 .c-nm { flex: 1; min-width: 0; }
-.c-dt { width: 74px; flex: none; text-align: right; }
+.c-dt { width: 84px; flex: none; text-align: right; white-space: nowrap; }
 .c-n { width: 48px; flex: none; text-align: right; }
 .c-n.neg, .tbl td.neg { color: var(--bad); font-weight: 700; }
 .c-n.pos, .tbl td.pos { color: var(--good); }
@@ -692,3 +692,6 @@ body.printing main { padding: 0; }
 .g-ts input[type=date] { font: inherit; font-size: 13px; padding: 4px 6px; border: 1px solid var(--border); border-radius: 7px; background: var(--surface-2); color: var(--text); }
 #gZpct { min-width: 54px; color: var(--text-2); cursor: default; }
 .g-row .g-tl { overflow: hidden; }
+.c-wbs { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-right: 6px; }
+.c-cnt { font-style: normal; font-size: 10.5px; font-weight: 600; color: var(--text-2); background: color-mix(in srgb, var(--brand) 10%, transparent); border-radius: 99px; padding: 0 6px; margin-left: 4px; }
+.g-wbs .c-dt, .g-wbs .c-n { font-weight: 600; }
