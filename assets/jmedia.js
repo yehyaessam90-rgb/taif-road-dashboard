@@ -134,10 +134,16 @@
       const jm = /Junction[\s\-_]*0?([1357])\b/i.exec(all);
       const key = jm ? 'J' + jm[1] : i === 0 ? 'overview' : '';
       const pct = lbl => {
-        // overlapping shapes: the last one drawn is the one visible on the slide
-        const L = shapes.filter(s => lbl.test(s.t)).pop(); if (!L) return null;
-        const c = shapes.map((s, i) => Object.assign({ i }, s)).filter(s => /^\s*\d{1,3}(\.\d+)?\s*%\s*$/.test(s.t) && s.y < L.y && L.y - s.y < 1500000).sort((a, b) => (Math.abs(a.x - L.x) + (L.y - a.y)) - (Math.abs(b.x - L.x) + (L.y - b.y)) || b.i - a.i)[0];
-        return c ? parseFloat(c.t) : null;
+        // the figure sits right above its label. Old boxes are sometimes left hidden behind the
+        // current ones, so take the last one drawn (the one on top); a stray label elsewhere
+        // (e.g. a legend "Actual") has no figure above it and is skipped
+        const labels = shapes.filter(s => lbl.test(s.t));
+        for (let k = labels.length - 1; k >= 0; k--) {
+          const L = labels[k];
+          const c = shapes.map((s, i) => Object.assign({ i }, s)).filter(s => /^\s*\d{1,3}(\.\d+)?\s*%\s*$/.test(s.t) && s.y < L.y && L.y - s.y < 1500000 && Math.abs(s.x - L.x) < 800000).pop();
+          if (c) return parseFloat(c.t);
+        }
+        return null;
       };
       const title = (shapes.find(s => /Junction|Dashboard/i.test(s.t) && s.t.length < 120 && /Junction/i.test(s.t)) || shapes[0] || { t: '' }).t.split('\n')[0];
       return { n: i + 1, key, title, plan: pct(/^(OVERALL\s+JUNCTIONS\s+)?PLAN(NED)?\s*$/i), act: pct(/^(OVERALL\s+JUNCTIONS\s+)?ACTUAL\s*$/i) };
@@ -498,13 +504,17 @@
       // files dropped from the index (deleted photos / weeks) are deleted from the repository too
       const keepP = new Set(); merged.weeks.forEach(w => keepP.add(w.file)); merged.daily.forEach(g => g.photos.forEach(p => { keepP.add(p.file); keepP.add(p.thumb); }));
       const gone = []; remote.weeks.forEach(w => { if (!keepP.has(w.file)) gone.push(w.file); }); remote.daily.forEach(g => g.photos.forEach(p => [p.file, p.thumb].forEach(f => { if (!keepP.has(f)) gone.push(f); })));
-      if (gone.length) {
-        const all = await gh('/git/trees/' + head.tree.sha + '?recursive=1'), exists = new Set(all.tree.map(t => t.path));
-        gone.filter(f => exists.has(f)).forEach(f => tree.push({ path: f, mode: '100644', type: 'blob', sha: null }));
-      }
+      const all = await gh('/git/trees/' + head.tree.sha + '?recursive=1'), exists = new Set(all.tree.map(t => t.path));
+      gone.filter(f => exists.has(f)).forEach(f => tree.push({ path: f, mode: '100644', type: 'blob', sha: null }));
+      // never list a week or photo whose file is neither on the site nor uploaded now
+      // (an old pending "add" kept in a browser must not bring back a deleted week)
+      const willHave = f => exists.has(f) || (files.includes(f) && OPS.some(o => (o.op === 'addWeek' && o.week.file === f) || (o.op === 'addPhotos' && o.photos.some(p => p.file === f))));
+      merged.weeks = merged.weeks.filter(w => willHave(w.file));
+      merged.daily.forEach(g => { g.photos = g.photos.filter(p => willHave(p.file)); }); merged.daily = merged.daily.filter(g => g.photos.length);
       for (const [i, p] of files.entries()) {
         msg(`Uploading ${i + 1} / ${files.length}: ${esc(p.split('/').slice(-3).join('/'))}…`);
-        const blob = await fileGet(p); if (!blob) continue;
+        const blob = await fileGet(p);
+        if (!blob) { if (!exists.has(p)) { merged.weeks = merged.weeks.filter(w => w.file !== p); merged.daily.forEach(g => { g.photos = g.photos.filter(q => q.file !== p); }); merged.daily = merged.daily.filter(g => g.photos.length); } continue; }
         const b = await gh('/git/blobs', { method: 'POST', body: JSON.stringify({ content: b64(await blob.arrayBuffer()), encoding: 'base64' }) });
         tree.push({ path: p, mode: '100644', type: 'blob', sha: b.sha });
       }
