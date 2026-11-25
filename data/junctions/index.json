@@ -1,7 +1,7 @@
 {
  "v": 1,
- "rev": 1795589057207,
- "updated": "2026-11-25T06:44:17.207Z",
+ "rev": 1795589122154,
+ "updated": "2026-11-25T06:45:22.154Z",
  "weeks": [
   {
    "date": "2026-11-21",
@@ -406,6 +406,84 @@
      "h": 738,
      "cap": "",
      "name": "JN 05 11.jpeg"
+    }
+   ]
+  },
+  {
+   "date": "2026-11-25",
+   "key": "J3",
+   "photos": [
+    {
+     "file": "data/junctions/daily/2026-11-25/J3/01.jpg",
+     "thumb": "data/junctions/daily/2026-11-25/J3/01_t.jpg",
+     "size": 308251,
+     "w": 1600,
+     "h": 738,
+     "cap": "",
+     "name": "JN 03 01.jpeg"
+    },
+    {
+     "file": "data/junctions/daily/2026-11-25/J3/02.jpg",
+     "thumb": "data/junctions/daily/2026-11-25/J3/02_t.jpg",
+     "size": 259973,
+     "w": 1600,
+     "h": 737,
+     "cap": "",
+     "name": "JN 03 02.jpeg"
+    },
+    {
+     "file": "data/junctions/daily/2026-11-25/J3/03.jpg",
+     "thumb": "data/junctions/daily/2026-11-25/J3/03_t.jpg",
+     "size": 248388,
+     "w": 1600,
+     "h": 738,
+     "cap": "",
+     "name": "JN 03 03.jpeg"
+    },
+    {
+     "file": "data/junctions/daily/2026-11-25/J3/04.jpg",
+     "thumb": "data/junctions/daily/2026-11-25/J3/04_t.jpg",
+     "size": 279510,
+     "w": 1600,
+     "h": 738,
+     "cap": "",
+     "name": "JN 03 04.jpeg"
+    },
+    {
+     "file": "data/junctions/daily/2026-11-25/J3/05.jpg",
+     "thumb": "data/junctions/daily/2026-11-25/J3/05_t.jpg",
+     "size": 296586,
+     "w": 1600,
+     "h": 738,
+     "cap": "",
+     "name": "JN 03 05.jpeg"
+    },
+    {
+     "file": "data/junctions/daily/2026-11-25/J3/06.jpg",
+     "thumb": "data/junctions/daily/2026-11-25/J3/06_t.jpg",
+     "size": 230849,
+     "w": 1600,
+     "h": 737,
+     "cap": "",
+     "name": "JN 03 06.jpeg"
+    },
+    {
+     "file": "data/junctions/daily/2026-11-25/J3/07.jpg",
+     "thumb": "data/junctions/daily/2026-11-25/J3/07_t.jpg",
+     "size": 241372,
+     "w": 1600,
+     "h": 738,
+     "cap": "",
+     "name": "JN 03 07.jpeg"
+    },
+    {
+     "file": "data/junctions/daily/2026-11-25/J3/08.jpg",
+     "thumb": "data/junctions/daily/2026-11-25/J3/08_t.jpg",
+     "size": 285810,
+     "w": 1600,
+     "h": 738,
+     "cap": "",
+     "name": "JN 03 08.jpeg"
     }
    ]
   },
