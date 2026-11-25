@@ -1,7 +1,7 @@
 {
  "v": 1,
- "rev": 1795588911198,
- "updated": "2026-11-25T06:41:51.198Z",
+ "rev": 1795588973296,
+ "updated": "2026-11-25T06:42:53.296Z",
  "weeks": [
   {
    "date": "2026-11-21",
@@ -226,6 +226,84 @@
   }
  ],
  "daily": [
+  {
+   "date": "2026-11-25",
+   "key": "J7",
+   "photos": [
+    {
+     "file": "data/junctions/daily/2026-11-25/J7/01.jpg",
+     "thumb": "data/junctions/daily/2026-11-25/J7/01_t.jpg",
+     "size": 347709,
+     "w": 1600,
+     "h": 738,
+     "cap": "",
+     "name": "JN 07 01.jpeg"
+    },
+    {
+     "file": "data/junctions/daily/2026-11-25/J7/02.jpg",
+     "thumb": "data/junctions/daily/2026-11-25/J7/02_t.jpg",
+     "size": 330871,
+     "w": 1600,
+     "h": 738,
+     "cap": "",
+     "name": "JN 07 02.jpeg"
+    },
+    {
+     "file": "data/junctions/daily/2026-11-25/J7/03.jpg",
+     "thumb": "data/junctions/daily/2026-11-25/J7/03_t.jpg",
+     "size": 310991,
+     "w": 1600,
+     "h": 738,
+     "cap": "",
+     "name": "JN 07 03.jpeg"
+    },
+    {
+     "file": "data/junctions/daily/2026-11-25/J7/04.jpg",
+     "thumb": "data/junctions/daily/2026-11-25/J7/04_t.jpg",
+     "size": 310418,
+     "w": 1600,
+     "h": 738,
+     "cap": "",
+     "name": "JN 07 04.jpeg"
+    },
+    {
+     "file": "data/junctions/daily/2026-11-25/J7/05.jpg",
+     "thumb": "data/junctions/daily/2026-11-25/J7/05_t.jpg",
+     "size": 331421,
+     "w": 1600,
+     "h": 738,
+     "cap": "",
+     "name": "JN 07 05.jpeg"
+    },
+    {
+     "file": "data/junctions/daily/2026-11-25/J7/06.jpg",
+     "thumb": "data/junctions/daily/2026-11-25/J7/06_t.jpg",
+     "size": 239940,
+     "w": 1600,
+     "h": 737,
+     "cap": "",
+     "name": "JN 07 06.jpeg"
+    },
+    {
+     "file": "data/junctions/daily/2026-11-25/J7/07.jpg",
+     "thumb": "data/junctions/daily/2026-11-25/J7/07_t.jpg",
+     "size": 276856,
+     "w": 1600,
+     "h": 737,
+     "cap": "",
+     "name": "JN 07 07.jpeg"
+    },
+    {
+     "file": "data/junctions/daily/2026-11-25/J7/08.jpg",
+     "thumb": "data/junctions/daily/2026-11-25/J7/08_t.jpg",
+     "size": 313201,
+     "w": 1600,
+     "h": 738,
+     "cap": "",
+     "name": "JN 07 08.jpeg"
+    }
+   ]
+  },
   {
    "date": "2026-11-24",
    "key": "J7",
